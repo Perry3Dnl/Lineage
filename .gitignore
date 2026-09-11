@@ -1,0 +1,30 @@
+# .NET build output
+**/bin/
+**/obj/
+artifacts/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# Test / coverage output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# NuGet packages and generated artifacts
+*.nupkg
+*.snupkg
+*.vsix
+
+# OS files
+.DS_Store
+Thumbs.db

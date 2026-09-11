@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LineageInstrument>true</LineageInstrument>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lineage.Sample.Core\Lineage.Sample.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lineage.Runtime\Lineage.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\Lineage.Instrumentation\Lineage.Instrumentation.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <PrivateAssets>all</PrivateAssets>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Import Project="..\..\src\Lineage.Package\build\Lineage.targets" />
+
+</Project>

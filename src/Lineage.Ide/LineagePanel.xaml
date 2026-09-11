@@ -1,0 +1,55 @@
+<UserControl x:Class="LineageIde.LineagePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:LineageIde"
+             Background="#1E1E1E" Foreground="#DCDCDC">
+  <DockPanel>
+    <ToolBar DockPanel.Dock="Top" Background="#2D2D30" ToolBarTray.IsLocked="True">
+      <Button Content="Previous" Click="Previous_Click"/>
+      <Button Content="Next" Click="Next_Click"/>
+      <Button Content="Clear" Click="Clear_Click"/>
+      <Button Content="Open Source" Click="OpenSource_Click"/>
+      <Separator/>
+      <ToggleButton x:Name="RawToggle" Content="All events" ToolTip="Show every recorded event. Off = only steps where the value becomes something else." Click="Raw_Click"/>
+      <TextBlock Text="Click a step to open its source line" Foreground="#8A8A8A"
+                 VerticalAlignment="Center" Margin="12,0,0,0"
+                 ToolBar.OverflowMode="Never"/>
+    </ToolBar>
+    <ListBox DockPanel.Dock="Right" Width="220" ItemsSource="{Binding History}"
+             DisplayMemberPath="Title" SelectionChanged="History_SelectionChanged"
+             Background="#252526" Foreground="#DCDCDC" BorderThickness="0"/>
+    <TextBlock DockPanel.Dock="Top" Margin="12,8" Text="{Binding HeaderText}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+    <TextBox DockPanel.Dock="Bottom" MinHeight="140" Margin="8" IsReadOnly="True" TextWrapping="Wrap"
+             VerticalScrollBarVisibility="Auto" Text="{Binding DetailsText, Mode=OneWay}" Background="#252526" Foreground="#DCDCDC"
+             BorderBrush="#3F3F46"/>
+    <Grid Margin="8">
+      <TextBlock Text="{Binding Status}" Foreground="#DCDCDC" TextWrapping="Wrap" Margin="4">
+        <TextBlock.Style>
+          <Style TargetType="TextBlock">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding HasReport}" Value="False">
+                <Setter Property="Visibility" Value="Visible"/>
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </TextBlock.Style>
+      </TextBlock>
+      <local:LineageFlowView x:Name="FlowView"
+                             Graph="{Binding Flow}"
+                             SelectedNode="{Binding Selected, Mode=TwoWay}"
+                             NodeActivated="Flow_NodeActivated">
+        <local:LineageFlowView.Style>
+          <Style TargetType="local:LineageFlowView">
+            <Setter Property="Visibility" Value="Visible"/>
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding HasReport}" Value="False">
+                <Setter Property="Visibility" Value="Collapsed"/>
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </local:LineageFlowView.Style>
+      </local:LineageFlowView>
+    </Grid>
+  </DockPanel>
+</UserControl>

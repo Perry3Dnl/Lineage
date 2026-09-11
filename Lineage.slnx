@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/Lineage.Sample.Console/Lineage.Sample.Console.csproj" />
+    <Project Path="samples/Lineage.Sample.Core/Lineage.Sample.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Lineage.Ide/Lineage.Ide.csproj" />
+    <Project Path="src/Lineage.Instrumentation/Lineage.Instrumentation.csproj" />
+    <Project Path="src/Lineage.Package/Lineage.Package.csproj" />
+    <Project Path="src/Lineage.Runtime/Lineage.Runtime.csproj" />
+    <Project Path="src/Lineage.Viewer/Lineage.Viewer.csproj" />
+    <Project Path="src/Lineage.VisualStudio/Lineage.VisualStudio.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Lineage.Ide.Tests/Lineage.Ide.Tests.csproj" />
+    <Project Path="tests/Lineage.Instrumentation.Tests/Lineage.Instrumentation.Tests.csproj" />
+    <Project Path="tests/Lineage.Integration.Tests/Lineage.Integration.Tests.csproj" />
+    <Project Path="tests/Lineage.Runtime.Tests/Lineage.Runtime.Tests.csproj" />
+  </Folder>
+</Solution>

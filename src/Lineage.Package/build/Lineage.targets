@@ -1,0 +1,20 @@
+<Project>
+  <PropertyGroup>
+    <LineageInstrument Condition="'$(LineageInstrument)' == ''">true</LineageInstrument>
+    <_LineagePkgTools>$(MSBuildThisFileDirectory)..\tools\net10.0\</_LineagePkgTools>
+    <_LineageRepoTools>$(MSBuildThisFileDirectory)..\..\Lineage.Instrumentation\bin\$(Configuration)\net10.0\</_LineageRepoTools>
+    <_LineageTaskDir Condition="Exists('$(_LineagePkgTools)Lineage.Instrumentation.dll')">$(_LineagePkgTools)</_LineageTaskDir>
+    <_LineageTaskDir Condition="'$(_LineageTaskDir)' == ''">$(_LineageRepoTools)</_LineageTaskDir>
+    <LineageTaskAssembly Condition="'$(LineageTaskAssembly)' == ''">$(_LineageTaskDir)Lineage.Instrumentation.dll</LineageTaskAssembly>
+    <LineageVsixPath Condition="'$(LineageVsixPath)' == '' and Exists('$(MSBuildThisFileDirectory)..\tools\vsix\Lineage.VisualStudio.vsix')">$(MSBuildThisFileDirectory)..\tools\vsix\Lineage.VisualStudio.vsix</LineageVsixPath>
+  </PropertyGroup>
+
+  <Target Name="LineageInstrument"
+          AfterTargets="AfterCompile"
+          Condition="'$(LineageInstrument)' == 'true' AND '$(DesignTimeBuild)' != 'true' AND Exists('$(LineageTaskAssembly)') AND Exists('$(IntermediateOutputPath)$(TargetFileName)')">
+    <PropertyGroup>
+      <_LineageAssembly>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)$(TargetFileName)'))</_LineageAssembly>
+    </PropertyGroup>
+    <Exec Command="dotnet exec &quot;$(LineageTaskAssembly)&quot; &quot;$(_LineageAssembly)&quot;" />
+  </Target>
+</Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <RootNamespace>LineageViewer</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LineageInstrument>false</LineageInstrument>
+    <ApplicationTitle>Lineage</ApplicationTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Lineage.Runtime\LineageMetrics.cs" Link="LineageMetrics.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lineage.Ide\Lineage.Ide.csproj" />
+    <ProjectReference Include="..\Lineage.Runtime\Lineage.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

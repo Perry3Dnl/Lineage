@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net472;net8.0-windows</TargetFrameworks>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>disable</Nullable>
+    <RootNamespace>LineageIde</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LineageInstrument>false</LineageInstrument>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lineage.Runtime\Lineage.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

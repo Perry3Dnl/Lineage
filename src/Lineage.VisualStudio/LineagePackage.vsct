@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable">
+  <Extern href="stdidcmd.h"/>
+  <Extern href="vsshlids.h"/>
+  <Commands package="guidLineagePackage">
+    <Buttons>
+      <Button guid="guidLineageCmdSet" id="LineageWindow" priority="0x0100" type="Button">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1"/>
+        <Strings>
+          <ButtonText>Lineage</ButtonText>
+          <CommandName>View.Lineage</CommandName>
+          <MenuText>Lineage</MenuText>
+        </Strings>
+      </Button>
+      <Button guid="guidLineageCmdSet" id="AddLineagePackage" priority="0x0101" type="Button">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_TOOLS_OTHER2"/>
+        <Strings>
+          <ButtonText>Add Lineage Package to Project</ButtonText>
+          <CommandName>Tools.AddLineagePackage</CommandName>
+          <MenuText>Add Lineage Package to Project</MenuText>
+        </Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+  <CommandPlacements>
+    <CommandPlacement guid="guidLineageCmdSet" id="LineageWindow" priority="0x0100">
+      <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS2"/>
+    </CommandPlacement>
+    <CommandPlacement guid="guidLineageCmdSet" id="LineageWindow" priority="0x0100">
+      <Parent guid="guidSHLMainMenu" id="IDG_VS_TOOLS_OTHER2"/>
+    </CommandPlacement>
+  </CommandPlacements>
+  <Symbols>
+    <GuidSymbol name="guidLineagePackage" value="{7c4e9a12-8b3f-4d6e-9c1a-2e5f8d4b0a73}" />
+    <GuidSymbol name="guidLineageCmdSet" value="{9a12c44e-1d80-4b6f-b3c2-7e91aa55d018}">
+      <IDSymbol name="LineageWindow" value="0x0100" />
+      <IDSymbol name="AddLineagePackage" value="0x0101" />
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>

@@ -1,0 +1,36 @@
+<Project DefaultTargets="Bundle">
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <LineageVersion Condition="'$(LineageVersion)' == ''">0.1.0</LineageVersion>
+    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+    <Artifacts>$(RepoRoot)artifacts\</Artifacts>
+    <EmbedDir>$(Artifacts)embed\</EmbedDir>
+    <PackageProject>$(RepoRoot)src\Lineage.Package\Lineage.Package.csproj</PackageProject>
+    <VsixProject>$(RepoRoot)src\Lineage.VisualStudio\Lineage.VisualStudio.csproj</VsixProject>
+    <NupkgName>Lineage.$(LineageVersion).nupkg</NupkgName>
+  </PropertyGroup>
+
+  <Target Name="Bundle">
+    <MakeDir Directories="$(EmbedDir)" />
+    <MakeDir Directories="$(Artifacts)" />
+
+    <MSBuild Projects="$(VsixProject)" Targets="Restore;Build" Properties="Configuration=$(Configuration);LineageEmbeddedNupkg=" />
+
+    <MSBuild Projects="$(PackageProject)" Targets="Restore;Pack"
+             Properties="Configuration=$(Configuration);LineageIncludeVsix=false;PackageOutputPath=$(EmbedDir);Version=$(LineageVersion)" />
+
+    <MSBuild Projects="$(VsixProject)" Targets="Build"
+             Properties="Configuration=$(Configuration);LineageEmbeddedNupkg=$(EmbedDir)$(NupkgName)" />
+
+    <MSBuild Projects="$(PackageProject)" Targets="Pack"
+             Properties="Configuration=$(Configuration);LineageIncludeVsix=true;PackageOutputPath=$(Artifacts);Version=$(LineageVersion)" />
+
+    <Copy SourceFiles="$(RepoRoot)src\Lineage.VisualStudio\bin\$(Configuration)\net472\Lineage.VisualStudio.vsix"
+          DestinationFiles="$(Artifacts)Lineage.VisualStudio.vsix"
+          SkipUnchangedFiles="true" />
+
+    <Message Importance="high" Text="Lineage bundle:" />
+    <Message Importance="high" Text="  $(Artifacts)$(NupkgName)" />
+    <Message Importance="high" Text="  $(Artifacts)Lineage.VisualStudio.vsix" />
+  </Target>
+</Project>

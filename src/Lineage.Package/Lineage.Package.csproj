@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>Lineage</PackageId>
+    <Authors>Lineage</Authors>
+    <Description>Build-time instrumentation plus the Visual Studio tool window for Lineage.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <IsPackable>true</IsPackable>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <LineageIncludeVsix Condition="'$(LineageIncludeVsix)' == ''">true</LineageIncludeVsix>
+    <LineageVsixFile>$(MSBuildThisFileDirectory)..\Lineage.VisualStudio\bin\$(Configuration)\net472\Lineage.VisualStudio.vsix</LineageVsixFile>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_LineagePackFiles</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lineage.Runtime\Lineage.Runtime.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Lineage.Instrumentation\Lineage.Instrumentation.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="build\Lineage.targets" Pack="true" PackagePath="build\" />
+    <None Include="build\Lineage.targets" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <Target Name="_LineagePackFiles">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)..\Lineage.Runtime\bin\$(Configuration)\netstandard2.0\Lineage.Runtime.dll" PackagePath="lib/netstandard2.0" />
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)..\Lineage.Instrumentation\bin\$(Configuration)\net10.0\**\*.*" PackagePath="tools/net10.0/%(RecursiveDir)" />
+      <TfmSpecificPackageFile Include="$(LineageVsixFile)" PackagePath="tools/vsix" Condition="'$(LineageIncludeVsix)' == 'true' AND Exists('$(LineageVsixFile)')" />
+    </ItemGroup>
+  </Target>
+</Project>

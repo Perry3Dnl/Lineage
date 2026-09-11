@@ -1,0 +1,8 @@
+<Window x:Class="LineageViewer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ide="clr-namespace:LineageIde;assembly=Lineage.Ide"
+        Title="Lineage" Height="640" Width="960"
+        Background="#1E1E1E">
+  <ide:LineagePanel x:Name="Panel"/>
+</Window>

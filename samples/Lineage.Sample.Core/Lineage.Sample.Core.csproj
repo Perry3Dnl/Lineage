@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LineageInstrument>true</LineageInstrument>
+    <RootNamespace>Lineage.Sample</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Lineage.Runtime\Lineage.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\Lineage.Instrumentation\Lineage.Instrumentation.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <PrivateAssets>all</PrivateAssets>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Import Project="..\..\src\Lineage.Package\build\Lineage.targets" />
+
+</Project>
