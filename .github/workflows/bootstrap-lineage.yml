@@ -1,0 +1,35 @@
+name: Bootstrap Lineage source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".lineage-stage/**"
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify source archive
+        shell: bash
+        run: |
+          cat .lineage-stage/part* | base64 --decode > /tmp/lineage-source.zip
+          echo "e1cbd8af7417adc5fd5292ae935ceb7b24ee83a46f4554912564995f91e366d9  /tmp/lineage-source.zip" | sha256sum -c -
+          unzip -o /tmp/lineage-source.zip -d .
+          rm -rf .lineage-stage
+
+      - name: Commit source tree
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Lineage v0.1.0 source" || exit 0
+          git push origin HEAD:main
