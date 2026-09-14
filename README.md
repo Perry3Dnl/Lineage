@@ -1,8 +1,32 @@
-# Lineage
+<p align="center">
+  <img src="assets/lineage-logo.svg" alt="Lineage logo" width="180" />
+</p>
+
+<h1 align="center">Lineage</h1>
+
+<p align="center">
+  See how every .NET value was computed — build-time tracing visualized as a live tree view in Visual Studio.
+</p>
+
+<p align="center">
+  <strong>v0.1.0</strong> · Experimental early release
+</p>
+
+---
 
 **Lineage** is an experimental .NET value-lineage debugger: it instruments assemblies at build time and records how values were produced so you can inspect the chain of operations behind a value while debugging.
 
 > **Status:** `v0.1.0` — early release. APIs, instrumentation behavior, and package layout may change.
+
+## Preview
+
+> Illustrative preview of the Lineage tool-window concept. The UI is still evolving.
+
+<p align="center">
+  <img src="assets/tree-view-example.svg" alt="Illustrative example of the Lineage tree view" width="100%" />
+</p>
+
+The blue path represents the selected lineage chain: the path that explains how the focused value reached its result. Other dependencies remain visible in black so you can inspect alternate inputs without losing context.
 
 ## What it does
 
