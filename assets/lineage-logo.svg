@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lineage logo">
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="46" y="42" rx="44" ry="44" width="420" height="330" fill="#e9e2d6" stroke="#101010" stroke-width="12"/>
+    <rect x="88" y="82" rx="24" ry="24" width="336" height="252" fill="url(#screen)" stroke="#111" stroke-width="10"/>
+    <rect x="393" y="294" rx="8" ry="8" width="30" height="18" fill="#f8f8f8" stroke="#111" stroke-width="6"/>
+    <rect x="138" y="378" width="236" height="28" fill="#bfb8ac"/>
+    <rect x="92" y="406" rx="10" ry="10" width="328" height="32" fill="#ece7dd" stroke="#111" stroke-width="8"/>
+  </g>
+  <g transform="translate(0,4)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#ffffff" stroke-width="10" opacity="0.95">
+      <path d="M256 126 C256 145 275 151 297 170"/>
+      <path d="M226 158 C220 173 198 175 186 191"/>
+      <path d="M185 218 C164 229 154 239 154 264"/>
+      <path d="M185 218 C212 232 223 246 223 266"/>
+      <path d="M297 170 C304 188 297 210 277 230"/>
+      <path d="M297 170 C326 181 340 186 353 218"/>
+      <path d="M277 230 L277 289"/>
+      <path d="M277 230 C301 242 314 258 314 280"/>
+    </g>
+    <g stroke="#0b0b0b" stroke-width="12">
+      <path d="M256 126 C250 145 236 152 226 158"/>
+      <path d="M186 191 C185 205 185 210 185 218"/>
+      <path d="M185 218 C163 228 154 241 154 264"/>
+      <path d="M185 218 C211 232 223 246 223 266"/>
+      <path d="M297 170 C328 180 342 186 353 218"/>
+      <path d="M277 230 C301 242 314 257 314 280"/>
+    </g>
+    <g stroke="#1e78ff" stroke-width="12">
+      <path d="M256 126 C256 145 275 151 297 170"/>
+      <path d="M297 170 C304 188 297 210 277 230"/>
+      <path d="M277 230 L277 289"/>
+    </g>
+    <g fill="#fdfdfd" stroke-width="12">
+      <circle cx="256" cy="126" r="19" stroke="#1e78ff"/>
+      <circle cx="186" cy="191" r="19" stroke="#0b0b0b"/>
+      <circle cx="154" cy="264" r="19" stroke="#0b0b0b"/>
+      <circle cx="223" cy="266" r="19" stroke="#0b0b0b"/>
+      <circle cx="297" cy="170" r="19" stroke="#1e78ff"/>
+      <circle cx="353" cy="218" r="19" stroke="#0b0b0b"/>
+      <circle cx="277" cy="230" r="19" stroke="#1e78ff"/>
+      <circle cx="314" cy="280" r="19" stroke="#0b0b0b"/>
+      <circle cx="277" cy="289" r="19" stroke="#1e78ff"/>
+    </g>
+  </g>
+</svg>
