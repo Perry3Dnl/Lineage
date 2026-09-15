@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="Lineage.VisualStudio" Version="0.1.0" Language="en-US" Publisher="Lineage" />
+    <Identity Id="Lineage.VisualStudio" Version="0.2.0" Language="en-US" Publisher="Lineage" />
     <DisplayName>Lineage</DisplayName>
     <Description>Shows the history behind a value while you debug. Also adds the Lineage NuGet package so your project is instrumented at build time.</Description>
   </Metadata>
