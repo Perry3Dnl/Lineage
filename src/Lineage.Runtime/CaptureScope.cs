@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Lineage.Internal;
 
 namespace Lineage
@@ -8,6 +9,8 @@ namespace Lineage
     {
         [ThreadStatic]
         private static CaptureScope _current;
+
+        private static int _nextSessionId;
 
         public const int DefaultCapacity = 65536;
 
@@ -18,6 +21,7 @@ namespace Lineage
         private bool _disposed;
 
         internal EventBuffer Buffer { get; }
+        internal int SessionId { get; }
         internal int NextValueId = 1;
         internal int NextFrameId = 1;
         internal int CurrentFrameId;
@@ -29,6 +33,7 @@ namespace Lineage
         private CaptureScope(CaptureScope parent, int capacity)
         {
             _parent = parent;
+            SessionId = Interlocked.Increment(ref _nextSessionId);
             Buffer = new EventBuffer(capacity);
         }
 
