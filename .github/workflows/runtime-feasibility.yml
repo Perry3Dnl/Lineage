@@ -1,0 +1,72 @@
+name: Runtime Feasibility
+
+on:
+  pull_request:
+    paths:
+      - "src/Lineage.Runtime/**"
+      - "tools/Lineage.Stress/**"
+      - ".github/workflows/runtime-feasibility.yml"
+  workflow_dispatch:
+    inputs:
+      events:
+        description: "Raw reclaimable Step count"
+        required: false
+        default: "10000000"
+      value_events:
+        description: "Steps using the current value-preview path"
+        required: false
+        default: "1000000"
+      objects:
+        description: "Short-lived tracked objects"
+        required: false
+        default: "10000"
+
+permissions:
+  contents: read
+
+jobs:
+  feasibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPORT_PATH: artifacts/runtime-feasibility.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Run long-session feasibility harness
+        shell: bash
+        run: |
+          EVENTS="10000000"
+          VALUE_EVENTS="1000000"
+          OBJECTS="10000"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            EVENTS="${{ inputs.events }}"
+            VALUE_EVENTS="${{ inputs.value_events }}"
+            OBJECTS="${{ inputs.objects }}"
+          fi
+
+          dotnet run --project tools/Lineage.Stress/Lineage.Stress.csproj \
+            --configuration Release -- \
+            --events "$EVENTS" \
+            --value-events "$VALUE_EVENTS" \
+            --objects "$OBJECTS" \
+            --capacity 65536 \
+            --batch 16384 \
+            --object-batch 1000 \
+            --max-retained-growth-mb 64 \
+            --report "$REPORT_PATH"
+
+      - name: Upload feasibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-feasibility
+          path: artifacts/runtime-feasibility.json
+          if-no-files-found: warn
