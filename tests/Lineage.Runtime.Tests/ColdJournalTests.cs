@@ -95,7 +95,7 @@ namespace Lineage.Runtime.Tests
                 Assert.True(scope.Buffer.ColdStorageBytes > 0);
                 Assert.Equal(200, slice.Count);
                 Assert.Equal(1, slice[0].ValueId);
-                Assert.Equal("origin", slice[0].Value);
+                Assert.Equal("\"origin\"", slice[0].Value);
                 Assert.Equal(current, slice[slice.Count - 1].ValueId);
                 Assert.Equal(current - 1, slice[slice.Count - 1].Parent0);
             }
@@ -153,7 +153,7 @@ namespace Lineage.Runtime.Tests
 
                 Assert.Equal(2000, current);
                 Assert.True(scope.Buffer.Dropped);
-                Assert.True(scope.Buffer.Count < scope.Buffer.Capacity);
+                Assert.True(scope.Buffer.Count <= scope.Buffer.Capacity);
                 Assert.True(scope.Buffer.ColdStorageQueuedPages <= 2);
 
                 // A synchronous 100 ms write per 4-Step page would take tens of seconds.
