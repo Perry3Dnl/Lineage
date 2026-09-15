@@ -4,6 +4,8 @@ namespace Lineage
 {
     public static class LineageSettings
     {
+        internal static bool ColdStorageEnabledByDefault = true;
+
         public static int ModeValue = (int)LineageMode.Strict;
 
         public static LineageMode Mode
@@ -70,7 +72,7 @@ namespace Lineage
             BreakOnReport = false;
             PublishToIde = true;
             WriteReportToConsole = false;
-            ColdStorageEnabled = true;
+            ColdStorageEnabled = ColdStorageEnabledByDefault;
             ColdStorageMaxBytes = 100L * 1024L * 1024L;
             ColdStorageHighWatermarkPercent = 70;
             ColdStorageTargetPercent = 50;
