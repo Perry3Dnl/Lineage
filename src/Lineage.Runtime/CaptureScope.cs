@@ -100,6 +100,11 @@ namespace Lineage
             Buffer.SetValue(valueId, preview);
         }
 
+        internal void SetCapturedValue(int valueId, LineageValueCodec.Payload value)
+        {
+            Buffer.SetCapturedValue(valueId, value);
+        }
+
         internal void SetTypeName(int valueId, string typeName)
         {
             Buffer.SetTypeName(valueId, typeName);
@@ -110,13 +115,14 @@ namespace Lineage
             return Buffer.GetTypeName(valueId);
         }
 
+        internal LineageValueKind GetValueKind(int valueId)
+        {
+            return Buffer.GetValueKind(valueId);
+        }
+
         internal void CopyPreview(int fromValueId, int toValueId)
         {
-            var preview = GetPreview(fromValueId);
-            if (preview != null)
-            {
-                SetPreview(toValueId, preview);
-            }
+            Buffer.CopyValue(fromValueId, toValueId);
         }
 
         internal string GetPreview(int valueId)
@@ -124,10 +130,6 @@ namespace Lineage
             return Buffer.GetValue(valueId);
         }
 
-        /// <summary>
-        /// Associates a stable runtime slot with its current provenance step. Reassigning
-        /// the same root replaces the previous value rather than growing the root set.
-        /// </summary>
         internal void SetRoot(long rootId, int valueId)
         {
             if (valueId <= 0)
@@ -139,11 +141,6 @@ namespace Lineage
             _roots[rootId] = valueId;
         }
 
-        /// <summary>
-        /// Registers an instance-field map once for this capture session. The map itself
-        /// holds only a weak reference to the application object, so this bookkeeping does
-        /// not extend that object's lifetime.
-        /// </summary>
         internal void RegisterObjectFieldMap(MutationTracker.FieldMap map)
         {
             if (map != null)
@@ -152,10 +149,6 @@ namespace Lineage
             }
         }
 
-        /// <summary>
-        /// Registers a root owned by the current method frame. The key is remembered only
-        /// once, so repeated assignments to the same slot do not grow frame bookkeeping.
-        /// </summary>
         internal void SetFrameRoot(long rootId, int valueId)
         {
             if (valueId <= 0)
@@ -202,11 +195,6 @@ namespace Lineage
         internal int RootCount => _roots.Count;
         internal int TrackedObjectCount => _objectFieldMaps.Count;
 
-        /// <summary>
-        /// Reclaims raw steps that cannot contribute to any currently registered root.
-        /// Collection is invoked only at runtime safe points where no unrooted IL
-        /// evaluation-stack values from an instrumented caller can be discarded.
-        /// </summary>
         internal ProvenanceCollectionResult CollectGarbage()
         {
             SweepDeadObjectRoots();
