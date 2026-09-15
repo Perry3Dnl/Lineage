@@ -23,7 +23,7 @@ namespace Lineage
                 var preview = ev.Value ?? (scope != null ? scope.GetPreview(ev.ValueId) : null);
                 var typeName = ev.TypeName ?? (scope != null ? scope.GetTypeName(ev.ValueId) : null);
                 var availability = string.IsNullOrEmpty(preview) ? ValueAvailability.NotCaptured : ValueAvailability.Available;
-                raw[i] = new LineageNode(
+                var node = new LineageNode(
                     ev.ValueId,
                     ev.LocationId,
                     ev.Kind,
@@ -41,6 +41,10 @@ namespace Lineage
                     null,
                     typeName,
                     availability);
+                node.ValueKind = ev.ValueKind != LineageValueKind.None
+                    ? ev.ValueKind
+                    : (scope != null ? scope.GetValueKind(ev.ValueId) : LineageValueKind.None);
+                raw[i] = node;
             }
 
             var semantic = ReportNormalizer.Apply(raw);

@@ -26,6 +26,7 @@ namespace Lineage
         public string Assembly { get; }
         public string TypeName { get; }
         public ValueAvailability ValueAvailability { get; }
+        public LineageValueKind ValueKind { get; internal set; }
 
         public LineageNode(
             int valueId,
@@ -83,6 +84,7 @@ namespace Lineage
             Parent0 = Parents.Count > 0 ? Parents[0] : 0;
             Parent1 = Parents.Count > 1 ? Parents[1] : 0;
             Children = EmptyIds;
+            ValueKind = LineageValueKind.None;
         }
 
         public string FormatStepValue()

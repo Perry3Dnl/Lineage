@@ -32,36 +32,47 @@ namespace Lineage.Instrumentation
 
         public RecorderImports(ModuleDefinition module)
         {
-            BeginCall = Import(module, nameof(Recorder.BeginCall));
-            PushArg = Import(module, nameof(Recorder.PushArg), typeof(int));
-            GetArg = Import(module, nameof(Recorder.GetArg), typeof(int));
-            EndCall = Import(module, nameof(Recorder.EndCall));
-            NoteCapture = Import(module, nameof(Recorder.NoteCapture), typeof(int));
-            ExternalCall = Import(module, nameof(Recorder.ExternalCall), typeof(int), typeof(int));
-            FinishInstrumentedCall = Import(module, nameof(Recorder.FinishInstrumentedCall), typeof(int), typeof(int));
-            SetReturn = Import(module, nameof(Recorder.SetReturn), typeof(int));
-            PopReturn = Import(module, nameof(Recorder.PopReturn));
-            EnterMethod = Import(module, nameof(Recorder.EnterMethod), typeof(int));
-            LeaveMethod = Import(module, nameof(Recorder.LeaveMethod));
-            SetFocusTarget = Import(module, nameof(Recorder.SetFocusTarget), typeof(int));
-            Produce = Import(module, nameof(Recorder.Produce), typeof(int), typeof(int), typeof(int), typeof(int));
-            Remember = Import(module, nameof(Recorder.Remember), typeof(object), typeof(int));
-            OnBranch = Import(module, nameof(Recorder.OnBranch), typeof(int), typeof(int));
-            FieldWrite = Import(module, nameof(Recorder.FieldWrite), typeof(object), typeof(int), typeof(int), typeof(int));
-            FieldRead = Import(module, nameof(Recorder.FieldRead), typeof(object), typeof(int), typeof(int), typeof(int));
-            EnterScope = Import(module, nameof(Recorder.EnterScope));
-            LeaveScope = Import(module, nameof(Recorder.LeaveScope), typeof(CaptureScope));
-            OnUnhandled = Import(module, nameof(Recorder.OnUnhandled), typeof(Exception));
+            BeginCall = ImportRecorder(module, nameof(Recorder.BeginCall));
+            PushArg = ImportRecorder(module, nameof(Recorder.PushArg), typeof(int));
+            GetArg = ImportRecorder(module, nameof(Recorder.GetArg), typeof(int));
+            EndCall = ImportRecorder(module, nameof(Recorder.EndCall));
+            NoteCapture = ImportRecorder(module, nameof(Recorder.NoteCapture), typeof(int));
+            ExternalCall = ImportRecorder(module, nameof(Recorder.ExternalCall), typeof(int), typeof(int));
+            FinishInstrumentedCall = ImportRecorder(module, nameof(Recorder.FinishInstrumentedCall), typeof(int), typeof(int));
+            SetReturn = ImportRecorder(module, nameof(Recorder.SetReturn), typeof(int));
+            PopReturn = ImportRecorder(module, nameof(Recorder.PopReturn));
+            EnterMethod = ImportRecorder(module, nameof(Recorder.EnterMethod), typeof(int));
+            LeaveMethod = ImportRecorder(module, nameof(Recorder.LeaveMethod));
+            SetFocusTarget = ImportRecorder(module, nameof(Recorder.SetFocusTarget), typeof(int));
+            Produce = ImportRecorder(module, nameof(Recorder.Produce), typeof(int), typeof(int), typeof(int), typeof(int));
+            Remember = ImportTyped(module, nameof(TypedValueRecorder.Remember), typeof(object), typeof(int));
+            OnBranch = ImportRecorder(module, nameof(Recorder.OnBranch), typeof(int), typeof(int));
+            FieldWrite = ImportRecorder(module, nameof(Recorder.FieldWrite), typeof(object), typeof(int), typeof(int), typeof(int));
+            FieldRead = ImportRecorder(module, nameof(Recorder.FieldRead), typeof(object), typeof(int), typeof(int), typeof(int));
+            EnterScope = ImportRecorder(module, nameof(Recorder.EnterScope));
+            LeaveScope = ImportRecorder(module, nameof(Recorder.LeaveScope), typeof(CaptureScope));
+            OnUnhandled = ImportRecorder(module, nameof(Recorder.OnUnhandled), typeof(Exception));
             ScopeType = module.ImportReference(typeof(CaptureScope));
             ExceptionType = module.ImportReference(typeof(Exception));
         }
 
-        private static MethodReference Import(ModuleDefinition module, string name, params Type[] parameters)
+        private static MethodReference ImportRecorder(ModuleDefinition module, string name, params Type[] parameters)
         {
             var method = typeof(Recorder).GetMethod(name, parameters);
             if (method == null)
             {
                 throw new InvalidOperationException("Missing Recorder method " + name);
+            }
+
+            return module.ImportReference(method);
+        }
+
+        private static MethodReference ImportTyped(ModuleDefinition module, string name, params Type[] parameters)
+        {
+            var method = typeof(TypedValueRecorder).GetMethod(name, parameters);
+            if (method == null)
+            {
+                throw new InvalidOperationException("Missing typed value recorder method " + name);
             }
 
             return module.ImportReference(method);
