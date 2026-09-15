@@ -12,11 +12,26 @@ namespace Lineage.Internal
         private static long _nextRootId;
 
         /// <summary>
+        /// Compatibility entry point used by the existing recorder. The active scope is
+        /// resolved here so instance-field maps can register for weak-object cleanup.
+        /// </summary>
+        public static long Write(object target, int fieldToken, int valueId, int sessionId)
+        {
+            var scope = CaptureScope.Current;
+            if (scope == null || scope.SessionId != sessionId)
+            {
+                return 0;
+            }
+
+            return Write(target, fieldToken, valueId, scope);
+        }
+
+        /// <summary>
         /// Records the latest provenance value for a field and returns a stable negative
         /// root id for that object-field slot. Instance objects are never strongly held by
         /// Lineage: each FieldMap keeps only a long weak reference to its application object.
         /// </summary>
-        public static long Write(object target, int fieldToken, int valueId, CaptureScope scope)
+        internal static long Write(object target, int fieldToken, int valueId, CaptureScope scope)
         {
             if (valueId == 0 || scope == null || scope.SessionId == 0)
             {
