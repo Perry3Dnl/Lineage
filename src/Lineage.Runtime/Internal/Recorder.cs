@@ -29,6 +29,19 @@ namespace Lineage.Internal
         [ThreadStatic]
         private static int _focusTarget;
 
+        [ThreadStatic]
+        private static int[] _methodFrames;
+
+        [ThreadStatic]
+        private static int[] _methodRootMarks;
+
+        [ThreadStatic]
+        private static int _methodFrameDepth;
+
+        private const int RootKindArgument = 1;
+        private const int RootKindLocalStore = 2;
+        private const int RootKindArgumentStore = 3;
+
         private static int _unhandledHooked;
 
         public static bool IsEnabled()
@@ -82,7 +95,9 @@ namespace Lineage.Internal
                 return 0;
             }
 
-            return _args[start + index];
+            var valueId = _args[start + index];
+            TrackFrameRoot(RootKindArgument, index, valueId);
+            return valueId;
         }
 
         public static void EndCall()
@@ -243,7 +258,23 @@ namespace Lineage.Internal
                 return 0;
             }
 
+            // A method entered without an instrumented caller is a safe boundary. Any
+            // pending return belongs to the previous top-level invocation and cannot be
+            // consumed by an instrumented caller anymore.
+            if (_methodFrameDepth == 0 && _argFrameCount == 0)
+            {
+                _returnId = 0;
+                if (scope.Buffer.Count > 0)
+                {
+                    scope.CollectGarbage();
+                }
+            }
+
+            EnsureMethodStorage();
             var frame = scope.NextFrameId++;
+            _methodFrames[_methodFrameDepth] = frame;
+            _methodRootMarks[_methodFrameDepth] = scope.FrameRootMark;
+            _methodFrameDepth++;
             scope.CurrentFrameId = frame;
             Write(scope, locationId, 0, 0, 0, EventKind.MethodEntry);
             return frame;
@@ -257,7 +288,25 @@ namespace Lineage.Internal
                 return;
             }
 
-            scope.CurrentFrameId = 0;
+            if (_methodFrameDepth <= 0)
+            {
+                scope.CurrentFrameId = 0;
+                return;
+            }
+
+            var index = --_methodFrameDepth;
+            scope.ReleaseFrameRoots(_methodRootMarks[index]);
+            _methodRootMarks[index] = 0;
+            _methodFrames[index] = 0;
+            scope.CurrentFrameId = _methodFrameDepth > 0 ? _methodFrames[_methodFrameDepth - 1] : 0;
+
+            // Do not collect while an instrumented caller is active: that caller can
+            // still hold unrooted provenance ids on its IL evaluation stack. At the
+            // outermost void boundary there is no such stack, so collection is safe.
+            if (_methodFrameDepth == 0 && _returnId == 0 && !scope.Frozen)
+            {
+                scope.CollectGarbage();
+            }
         }
 
         public static void SetFocusTarget(int valueId)
@@ -280,10 +329,22 @@ namespace Lineage.Internal
             }
 
             var valueId = scope.NextValueId++;
-            Write(scope, locationId, valueId, parent0, parent1, (EventKind)kind);
+            var eventKind = (EventKind)kind;
+            Write(scope, locationId, valueId, parent0, parent1, eventKind);
             if (parent0 != 0 && parent1 == 0)
             {
                 scope.CopyPreview(parent0, valueId);
+            }
+
+            // Existing instrumentation already distinguishes local/argument stores, so
+            // they can become roots without injecting another call into every method.
+            if (eventKind == EventKind.LocalStore)
+            {
+                TrackFrameRoot(RootKindLocalStore, locationId, valueId);
+            }
+            else if (eventKind == EventKind.Argument)
+            {
+                TrackFrameRoot(RootKindArgumentStore, locationId, valueId);
             }
 
             LineageMetrics.AddProduce(Stopwatch.GetTimestamp() - start);
@@ -323,13 +384,25 @@ namespace Lineage.Internal
         public static int FieldWrite(object target, int locationId, int fieldToken, int rhsId)
         {
             var id = Produce(locationId, rhsId, 0, (int)EventKind.FieldWrite);
-            MutationTracker.Write(target, fieldToken, id);
+            var scope = CaptureScope.Current;
+            if (scope == null || id == 0)
+            {
+                return id;
+            }
+
+            var rootId = MutationTracker.Write(target, fieldToken, id, scope.SessionId);
+            if (rootId != 0)
+            {
+                scope.SetRoot(rootId, id);
+            }
+
             return id;
         }
 
         public static int FieldRead(object target, int locationId, int fieldToken, int objectId)
         {
-            var existing = MutationTracker.Read(target, fieldToken);
+            var scope = CaptureScope.Ensure();
+            var existing = scope != null ? MutationTracker.Read(target, fieldToken, scope.SessionId) : 0;
             return Produce(locationId, objectId, existing, (int)EventKind.FieldRead);
         }
 
@@ -464,6 +537,29 @@ namespace Lineage.Internal
             }
         }
 
+        private static void TrackFrameRoot(int kind, int slot, int valueId)
+        {
+            if (valueId <= 0)
+            {
+                return;
+            }
+
+            var scope = CaptureScope.Current;
+            if (scope == null || scope.CurrentFrameId <= 0)
+            {
+                return;
+            }
+
+            scope.SetFrameRoot(FrameRootKey(scope.CurrentFrameId, kind, slot), valueId);
+        }
+
+        private static long FrameRootKey(int frameId, int kind, int slot)
+        {
+            return ((long)(uint)frameId << 32)
+                | ((long)(kind & 3) << 30)
+                | (uint)(slot & 0x3fffffff);
+        }
+
         private static void Write(CaptureScope scope, int locationId, int valueId, int parent0, int parent1, EventKind kind)
         {
             var ev = new LineageEvent
@@ -494,6 +590,24 @@ namespace Lineage.Internal
             {
                 _captures = new int[8];
             }
+        }
+
+        private static void EnsureMethodStorage()
+        {
+            if (_methodFrames == null)
+            {
+                _methodFrames = new int[8];
+                _methodRootMarks = new int[8];
+                return;
+            }
+
+            if (_methodFrameDepth < _methodFrames.Length)
+            {
+                return;
+            }
+
+            Array.Resize(ref _methodFrames, _methodFrames.Length * 2);
+            Array.Resize(ref _methodRootMarks, _methodRootMarks.Length * 2);
         }
     }
 }
