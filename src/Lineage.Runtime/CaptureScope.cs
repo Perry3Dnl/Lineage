@@ -16,6 +16,7 @@ namespace Lineage
 
         private readonly CaptureScope _parent;
         private readonly Dictionary<long, int> _roots = new Dictionary<long, int>();
+        private readonly List<MutationTracker.FieldMap> _objectFieldMaps = new List<MutationTracker.FieldMap>();
         private long[] _frameRootKeys = new long[32];
         private int _frameRootKeyCount;
         private bool _disposed;
@@ -78,6 +79,8 @@ namespace Lineage
             }
 
             _disposed = true;
+            MutationTracker.ReleaseScope(this, _objectFieldMaps);
+            _objectFieldMaps.Clear();
             Buffer.Clear();
             _roots.Clear();
             _frameRootKeyCount = 0;
@@ -137,6 +140,19 @@ namespace Lineage
         }
 
         /// <summary>
+        /// Registers an instance-field map once for this capture session. The map itself
+        /// holds only a weak reference to the application object, so this bookkeeping does
+        /// not extend that object's lifetime.
+        /// </summary>
+        internal void RegisterObjectFieldMap(MutationTracker.FieldMap map)
+        {
+            if (map != null)
+            {
+                _objectFieldMaps.Add(map);
+            }
+        }
+
+        /// <summary>
         /// Registers a root owned by the current method frame. The key is remembered only
         /// once, so repeated assignments to the same slot do not grow frame bookkeeping.
         /// </summary>
@@ -184,6 +200,7 @@ namespace Lineage
         }
 
         internal int RootCount => _roots.Count;
+        internal int TrackedObjectCount => _objectFieldMaps.Count;
 
         /// <summary>
         /// Reclaims raw steps that cannot contribute to any currently registered root.
@@ -192,6 +209,8 @@ namespace Lineage
         /// </summary>
         internal ProvenanceCollectionResult CollectGarbage()
         {
+            SweepDeadObjectRoots();
+
             var roots = new List<int>(_roots.Count + (FocusValueId > 0 ? 1 : 0));
             foreach (var pair in _roots)
             {
@@ -207,6 +226,20 @@ namespace Lineage
             }
 
             return Buffer.Collect(roots);
+        }
+
+        private void SweepDeadObjectRoots()
+        {
+            for (var i = _objectFieldMaps.Count - 1; i >= 0; i--)
+            {
+                var map = _objectFieldMaps[i];
+                if (!MutationTracker.RetireDeadObject(map, this))
+                {
+                    continue;
+                }
+
+                _objectFieldMaps.RemoveAt(i);
+            }
         }
 
         private void EnsureFrameRootCapacity()
