@@ -6,16 +6,10 @@ using System.Threading;
 
 namespace Lineage
 {
-    /// <summary>
-    /// Disk-backed overflow tier for provenance pages. The application thread only
-    /// enqueues immutable pages; all file I/O happens on a dedicated background writer.
-    /// Persisted pages are immutable segments so the oldest segments can be deleted when
-    /// the configured disk budget is reached without rewriting the remaining journal.
-    /// </summary>
     internal sealed class ColdJournal : IDisposable
     {
         private const int SegmentMagic = 0x4C4E4A31; // LNJ1
-        private const int SegmentVersion = 1;
+        private const int SegmentVersion = 2;
 
         private readonly object _gate = new object();
         private readonly Queue<ColdJournalPage> _queue = new Queue<ColdJournalPage>();
@@ -32,7 +26,6 @@ namespace Lineage
         private long _bytes;
         private int _sequence;
 
-        // Deterministic stress hook. Never configured by normal runtime code.
         internal static int WriterDelayMillisecondsForTests;
 
         public ColdJournal(long maxBytes, int queueCapacity, string rootDirectory)
@@ -45,68 +38,32 @@ namespace Lineage
 
         public bool Truncated
         {
-            get
-            {
-                lock (_gate)
-                {
-                    return _truncated || _ioFailed;
-                }
-            }
+            get { lock (_gate) { return _truncated || _ioFailed; } }
         }
 
         public bool Active
         {
-            get
-            {
-                lock (_gate)
-                {
-                    return _writer != null || _segments.Count > 0 || _queue.Count > 0;
-                }
-            }
+            get { lock (_gate) { return _writer != null || _segments.Count > 0 || _queue.Count > 0; } }
         }
 
         public long Bytes
         {
-            get
-            {
-                lock (_gate)
-                {
-                    return _bytes;
-                }
-            }
+            get { lock (_gate) { return _bytes; } }
         }
 
         public int SegmentCount
         {
-            get
-            {
-                lock (_gate)
-                {
-                    return _segments.Count;
-                }
-            }
+            get { lock (_gate) { return _segments.Count; } }
         }
 
         public int QueuedPageCount
         {
-            get
-            {
-                lock (_gate)
-                {
-                    return _queue.Count + (_writing ? 1 : 0);
-                }
-            }
+            get { lock (_gate) { return _queue.Count + (_writing ? 1 : 0); } }
         }
 
         public bool CanAccept
         {
-            get
-            {
-                lock (_gate)
-                {
-                    return !_disposed && !_stopping && _queue.Count < _queueCapacity;
-                }
-            }
+            get { lock (_gate) { return !_disposed && !_stopping && _queue.Count < _queueCapacity; } }
         }
 
         public bool TryEnqueue(ColdJournalPage page)
@@ -188,11 +145,6 @@ namespace Lineage
             }
         }
 
-        /// <summary>
-        /// Disposal never waits for storage. Pending pages are abandoned, the background
-        /// writer is asked to stop after its current write, and that writer removes the
-        /// temporary session directory when it exits.
-        /// </summary>
         public void Dispose()
         {
             var cleanupHere = false;
@@ -327,6 +279,9 @@ namespace Lineage
                         writer.Write(step.Id);
                         writer.Write(step.LocationId);
                         writer.Write((int)step.Kind);
+                        writer.Write((byte)step.ValueKind);
+                        writer.Write(step.ValueData0);
+                        writer.Write(step.ValueData1);
                         WriteNullable(writer, step.Value);
                         WriteNullable(writer, step.TypeName);
                     }
@@ -379,7 +334,13 @@ namespace Lineage
                 using (var stream = new FileStream(segment.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 64 * 1024, false))
                 using (var reader = new BinaryReader(stream, Encoding.UTF8, false))
                 {
-                    if (reader.ReadInt32() != SegmentMagic || reader.ReadInt32() != SegmentVersion)
+                    if (reader.ReadInt32() != SegmentMagic)
+                    {
+                        return false;
+                    }
+
+                    var version = reader.ReadInt32();
+                    if (version != 1 && version != SegmentVersion)
                     {
                         return false;
                     }
@@ -396,14 +357,29 @@ namespace Lineage
                     var steps = new LineageStep[stepCount];
                     for (var i = 0; i < stepCount; i++)
                     {
-                        steps[i] = new LineageStep
+                        var step = new LineageStep
                         {
                             Id = reader.ReadInt32(),
                             LocationId = reader.ReadInt32(),
-                            Kind = (EventKind)reader.ReadInt32(),
-                            Value = ReadNullable(reader),
-                            TypeName = ReadNullable(reader)
+                            Kind = (EventKind)reader.ReadInt32()
                         };
+
+                        if (version == 1)
+                        {
+                            step.Value = ReadNullable(reader);
+                            step.TypeName = ReadNullable(reader);
+                            step.ValueKind = string.IsNullOrEmpty(step.Value) ? LineageValueKind.None : LineageValueKind.LegacyText;
+                        }
+                        else
+                        {
+                            step.ValueKind = (LineageValueKind)reader.ReadByte();
+                            step.ValueData0 = reader.ReadInt64();
+                            step.ValueData1 = reader.ReadInt64();
+                            step.Value = ReadNullable(reader);
+                            step.TypeName = ReadNullable(reader);
+                        }
+
+                        steps[i] = step;
                     }
 
                     var relations = new LineageRelation[relationCount];
@@ -433,7 +409,6 @@ namespace Lineage
             }
             catch
             {
-                // Temporary debug storage cleanup is best effort only.
             }
         }
 
