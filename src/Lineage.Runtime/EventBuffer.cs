@@ -47,8 +47,9 @@ namespace Lineage
                         LocationId = step.LocationId,
                         ValueId = step.Id,
                         Kind = step.Kind,
-                        Value = step.Value,
-                        TypeName = step.TypeName
+                        Value = step.FormatValue(),
+                        TypeName = step.TypeName,
+                        ValueKind = step.ValueKind
                     };
                 }
 
@@ -127,13 +128,56 @@ namespace Lineage
 
             var step = _steps[index];
             step.Value = value;
+            step.ValueKind = LineageValueKind.LegacyText;
+            step.ValueData0 = 0;
+            step.ValueData1 = 0;
             _steps[index] = step;
+        }
+
+        internal void SetCapturedValue(int valueId, LineageValueCodec.Payload value)
+        {
+            var index = FindStepIndex(valueId);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var step = _steps[index];
+            step.ValueKind = value.Kind;
+            step.ValueData0 = value.Data0;
+            step.ValueData1 = value.Data1;
+            step.Value = value.Text;
+            _steps[index] = step;
+        }
+
+        internal void CopyValue(int fromValueId, int toValueId)
+        {
+            var fromIndex = FindStepIndex(fromValueId);
+            var toIndex = FindStepIndex(toValueId);
+            if (fromIndex < 0 || toIndex < 0)
+            {
+                return;
+            }
+
+            var source = _steps[fromIndex];
+            var target = _steps[toIndex];
+            target.ValueKind = source.ValueKind;
+            target.ValueData0 = source.ValueData0;
+            target.ValueData1 = source.ValueData1;
+            target.Value = source.Value;
+            _steps[toIndex] = target;
         }
 
         public string GetValue(int valueId)
         {
             var index = FindStepIndex(valueId);
-            return index >= 0 ? _steps[index].Value : null;
+            return index >= 0 ? _steps[index].FormatValue() : null;
+        }
+
+        internal LineageValueKind GetValueKind(int valueId)
+        {
+            var index = FindStepIndex(valueId);
+            return index >= 0 ? _steps[index].ValueKind : LineageValueKind.None;
         }
 
         public void SetTypeName(int valueId, string typeName)
@@ -162,8 +206,6 @@ namespace Lineage
 
         public void AttachParent(int valueId, int parentId)
         {
-            // The parent may already be cold; the child must still be hot because the
-            // relation is stored with the child's page.
             if (valueId <= 0 || parentId <= 0 || FindStepIndex(valueId) < 0)
             {
                 return;
@@ -270,8 +312,6 @@ namespace Lineage
                     continue;
                 }
 
-                // A parent absent from the hot store can legitimately live in a cold
-                // segment. Only discard a relation when its parent was hot and collected.
                 if (existing.Contains(relation.ParentStepId) && !live.Contains(relation.ParentStepId))
                 {
                     continue;
@@ -399,9 +439,6 @@ namespace Lineage
                 return;
             }
 
-            // Paging a hot store that is no larger than one configured page buys no useful
-            // headroom and breaks the semantics of deliberately tiny buffers used by the
-            // in-memory collector. Such scopes remain RAM-only and retain the old behavior.
             var configuredPageSteps = Math.Max(1, LineageSettings.ColdStoragePageSteps);
             if (_steps.Length <= configuredPageSteps)
             {
@@ -456,8 +493,6 @@ namespace Lineage
             {
                 if (!_journal.CanAccept)
                 {
-                    // Disk is behind, but RAM still has headroom. The recorder never waits;
-                    // it will retry on later pressure checks and only truncates at emergency.
                     break;
                 }
 
@@ -480,8 +515,6 @@ namespace Lineage
                 var page = ExtractOldestPage(count);
                 if (!_journal.TryEnqueue(page))
                 {
-                    // The page already left RAM. Make the missing history explicit rather
-                    // than retrying synchronously on the application thread.
                     _journal.MarkTruncated();
                     MarkDropped();
                     break;
