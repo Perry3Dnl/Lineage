@@ -5,7 +5,7 @@
     <LineageInstrument>false</LineageInstrument>
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <LineageVersion>0.1.0</LineageVersion>
+    <LineageVersion>0.2.0</LineageVersion>
     <Version>$(LineageVersion)</Version>
   </PropertyGroup>
 </Project>
