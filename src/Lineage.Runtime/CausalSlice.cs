@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace Lineage
@@ -26,23 +25,33 @@ namespace Lineage
             // Build a temporary child -> relation index only when a report is requested.
             // The hot capture path stays append-only and does not maintain a live graph.
             var heads = new int[maxId + 1];
+            var tails = new int[maxId + 1];
             for (var i = 0; i < heads.Length; i++)
             {
                 heads[i] = -1;
+                tails[i] = -1;
             }
 
             var next = new int[relationCount];
             for (var i = 0; i < relationCount; i++)
             {
+                next[i] = -1;
                 var child = relations[i].ChildStepId;
                 if (child <= 0 || child > maxId)
                 {
-                    next[i] = -1;
                     continue;
                 }
 
-                next[i] = heads[child];
-                heads[child] = i;
+                if (heads[child] < 0)
+                {
+                    heads[child] = i;
+                }
+                else
+                {
+                    next[tails[child]] = i;
+                }
+
+                tails[child] = i;
             }
 
             var visited = new bool[maxId + 1];
