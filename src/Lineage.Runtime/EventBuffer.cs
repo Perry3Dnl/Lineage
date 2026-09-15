@@ -430,20 +430,22 @@ namespace Lineage
 
             if (emergency)
             {
-                // Never wait for storage on the recording path. One page is enough to
-                // regain headroom. If the bounded queue is saturated, sacrifice the
-                // oldest hot page and make truncation explicit instead of blocking.
+                // One small oldest slice is sufficient to regain headroom. Never spill
+                // the entire hot store merely because a tiny test/application capacity is
+                // smaller than the configured page size.
+                var emergencyCount = Math.Min(pageSteps, Math.Max(1, _stepCount / 4));
                 if (_journal.CanAccept)
                 {
-                    var page = ExtractOldestPage(Math.Min(pageSteps, _stepCount));
+                    var page = ExtractOldestPage(emergencyCount);
                     if (!_journal.TryEnqueue(page))
                     {
+                        _journal.MarkTruncated();
                         MarkDropped();
                     }
                 }
                 else
                 {
-                    DiscardOldest(Math.Min(pageSteps, _stepCount));
+                    DiscardOldest(emergencyCount);
                     _journal.MarkTruncated();
                     MarkDropped();
                 }
@@ -462,7 +464,16 @@ namespace Lineage
                     break;
                 }
 
-                var count = Math.Min(pageSteps, _stepCount);
+                var stepExcess = Math.Max(0, _stepCount - targetSteps);
+                var relationExcess = Math.Max(0, _relationCount - targetRelations);
+                var relationDrivenSteps = relationExcess > 0 ? Math.Max(1, (relationExcess + 1) / 2) : 0;
+                var desired = Math.Max(stepExcess, relationDrivenSteps);
+                if (desired <= 0)
+                {
+                    break;
+                }
+
+                var count = Math.Min(pageSteps, Math.Min(_stepCount, desired));
                 var page = ExtractOldestPage(count);
                 if (!_journal.TryEnqueue(page))
                 {
