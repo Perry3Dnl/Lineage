@@ -1,7 +1,7 @@
 <Project DefaultTargets="Bundle">
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
-    <LineageVersion Condition="'$(LineageVersion)' == ''">0.1.0</LineageVersion>
+    <LineageVersion Condition="'$(LineageVersion)' == ''">0.2.0</LineageVersion>
     <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
     <Artifacts>$(RepoRoot)artifacts\</Artifacts>
     <EmbedDir>$(Artifacts)embed\</EmbedDir>

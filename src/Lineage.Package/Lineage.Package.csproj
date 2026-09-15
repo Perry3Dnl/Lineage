@@ -4,7 +4,9 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <PackageId>Lineage</PackageId>
     <Authors>Lineage</Authors>
-    <Description>Build-time instrumentation plus the Visual Studio tool window for Lineage.</Description>
+    <Description>Value-provenance debugging for .NET with build-time instrumentation, bounded runtime capture, and Visual Studio tooling.</Description>
+    <PackageReleaseNotes>v0.2.0 Provenance Core: normalized Steps and Relations, automatic provenance lifetime tracking, typed value payloads, bounded RAM-first capture, and a 100 MiB cold journal.</PackageReleaseNotes>
+    <PackageTags>debugging;provenance;lineage;visualstudio;instrumentation</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
