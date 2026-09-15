@@ -1,3 +1,5 @@
+using System;
+
 namespace Lineage
 {
     internal sealed class EventBuffer
@@ -79,7 +81,7 @@ namespace Lineage
                 return false;
             }
 
-            _steps[_stepCount++] = new LineageStep(ev.ValueId, ev.LocationId, ev.Kind);
+            _steps[_stepCount++] = new LineageStep(ev.ValueId, null, ev.LocationId, ev.Kind);
 
             if (ev.Parent0 > 0)
             {
@@ -94,6 +96,36 @@ namespace Lineage
             return true;
         }
 
+        public void SetValue(int valueId, string value)
+        {
+            var index = valueId - 1;
+            if (index < 0 || index >= _stepCount || string.IsNullOrEmpty(value))
+            {
+                return;
+            }
+
+            var step = _steps[index];
+            if (step.Id != valueId)
+            {
+                return;
+            }
+
+            step.Value = value;
+            _steps[index] = step;
+        }
+
+        public string GetValue(int valueId)
+        {
+            var index = valueId - 1;
+            if (index < 0 || index >= _stepCount)
+            {
+                return null;
+            }
+
+            var step = _steps[index];
+            return step.Id == valueId ? step.Value : null;
+        }
+
         public void AttachParent(int valueId, int parentId)
         {
             if (valueId <= 0 || parentId <= 0 || valueId > _stepCount)
@@ -106,6 +138,9 @@ namespace Lineage
 
         public void Clear()
         {
+            // Steps can contain captured strings, so clear the used range to release
+            // references immediately when the raw session is discarded.
+            Array.Clear(_steps, 0, _stepCount);
             _stepCount = 0;
             _relationCount = 0;
             _dropped = false;
