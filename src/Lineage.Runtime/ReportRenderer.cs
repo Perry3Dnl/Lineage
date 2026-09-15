@@ -5,6 +5,8 @@ namespace Lineage
 {
     internal static class ReportRenderer
     {
+        private const string IncompleteHistory = "[provenance history incomplete — older events were dropped or truncated]";
+
         public static string Render(LineageReport report, bool raw)
         {
             if (report == null)
@@ -15,12 +17,13 @@ namespace Lineage
             var nodes = raw ? report.RawNodes : report.Nodes;
             if (nodes == null || nodes.Count == 0)
             {
-                return "(empty lineage)";
+                return report.EventsDropped ? IncompleteHistory + "\n\n(empty lineage)" : "(empty lineage)";
             }
 
             if (raw)
             {
-                return RenderLinear(nodes, true);
+                var linear = RenderLinear(nodes, true);
+                return report.EventsDropped ? IncompleteHistory + "\n\n" + linear : linear;
             }
 
             var byId = Index(nodes);
@@ -39,6 +42,12 @@ namespace Lineage
             }
 
             var sb = new StringBuilder();
+            if (report.EventsDropped)
+            {
+                sb.AppendLine(IncompleteHistory);
+                sb.AppendLine();
+            }
+
             if (report.Trigger != null && report.Trigger.Kind != LineageTriggerKind.None)
             {
                 sb.Append("Trigger: ");
