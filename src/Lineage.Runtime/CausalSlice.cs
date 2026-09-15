@@ -20,9 +20,6 @@ namespace Lineage
                 return result;
             }
 
-            // Report hydration is intentionally the expensive side of Lineage. At this
-            // point it is acceptable to build temporary indexes over both cold and hot
-            // provenance; the recording path never pays for these structures.
             var existing = new HashSet<int>();
             for (var i = 0; i < steps.Length; i++)
             {
@@ -83,8 +80,6 @@ namespace Lineage
                 }
             }
 
-            // Cold segments and the hot array are both chronological, so the combined
-            // snapshot is already in StepId order. That keeps report output deterministic.
             for (var i = 0; i < steps.Length; i++)
             {
                 var step = steps[i];
@@ -124,8 +119,9 @@ namespace Lineage
                     Parent0 = parent0,
                     Parent1 = parent1,
                     Kind = step.Kind,
-                    Value = step.Value,
-                    TypeName = step.TypeName
+                    Value = step.FormatValue(),
+                    TypeName = step.TypeName,
+                    ValueKind = step.ValueKind
                 });
             }
 
