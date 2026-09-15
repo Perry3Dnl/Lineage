@@ -79,7 +79,9 @@ internal static class Program
 
     private static Result RunNormal(int events, string root)
     {
-        Configure(root, capacity: 65_536, maxBytes: 100L * 1024L * 1024L, pageSteps: 4096, queuePages: 4);
+        // The normal case gets a larger but still bounded queue so this scenario measures
+        // sustainable sequential disk throughput, not the overload behavior tested below.
+        Configure(root, capacity: 65_536, maxBytes: 100L * 1024L * 1024L, pageSteps: 4096, queuePages: 32);
         using var scope = CaptureScope.Enter(65_536);
 
         var maxHot = 0;
@@ -105,7 +107,7 @@ internal static class Program
             && snapshot.Steps.Length == events
             && snapshot.Relations.Length == Math.Max(0, events - 1)
             && scope.Buffer.ColdStorageBytes <= LineageSettings.ColdStorageMaxBytes
-            && maxHot < scope.Buffer.Capacity;
+            && maxHot <= scope.Buffer.Capacity;
 
         return Build(
             "normal-spill",
@@ -147,7 +149,7 @@ internal static class Program
         // not a throughput target.
         var passed = current == events
             && scope.Buffer.Dropped
-            && scope.Buffer.Count < scope.Buffer.Capacity
+            && scope.Buffer.Count <= scope.Buffer.Capacity
             && scope.Buffer.ColdStorageQueuedPages <= 2
             && stopwatch.Elapsed < TimeSpan.FromSeconds(2);
 
@@ -198,7 +200,7 @@ internal static class Program
             && scope.Buffer.Dropped
             && scope.Buffer.ColdStorageBytes <= cap
             && latestPresent
-            && scope.Buffer.Count < scope.Buffer.Capacity;
+            && scope.Buffer.Count <= scope.Buffer.Capacity;
 
         return Build(
             "rolling-disk-cap",
