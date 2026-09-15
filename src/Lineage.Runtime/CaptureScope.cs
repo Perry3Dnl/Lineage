@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Lineage.Internal;
 
 namespace Lineage
@@ -11,10 +12,10 @@ namespace Lineage
         public const int DefaultCapacity = 65536;
 
         private readonly CaptureScope _parent;
+        private readonly Dictionary<long, int> _roots = new Dictionary<long, int>();
         private bool _disposed;
 
         internal EventBuffer Buffer { get; }
-        private string[] _types;
         internal int NextValueId = 1;
         internal int NextFrameId = 1;
         internal int CurrentFrameId;
@@ -71,7 +72,7 @@ namespace Lineage
 
             _disposed = true;
             Buffer.Clear();
-            _types = null;
+            _roots.Clear();
             NextValueId = 1;
             NextFrameId = 1;
             CurrentFrameId = 0;
@@ -90,23 +91,12 @@ namespace Lineage
 
         internal void SetTypeName(int valueId, string typeName)
         {
-            if (valueId <= 0 || string.IsNullOrEmpty(typeName))
-            {
-                return;
-            }
-
-            EnsureTypes(valueId);
-            _types[valueId] = typeName;
+            Buffer.SetTypeName(valueId, typeName);
         }
 
         internal string GetTypeName(int valueId)
         {
-            if (_types == null || valueId <= 0 || valueId >= _types.Length)
-            {
-                return null;
-            }
-
-            return _types[valueId];
+            return Buffer.GetTypeName(valueId);
         }
 
         internal void CopyPreview(int fromValueId, int toValueId)
@@ -123,19 +113,50 @@ namespace Lineage
             return Buffer.GetValue(valueId);
         }
 
-        private void EnsureTypes(int valueId)
+        /// <summary>
+        /// Associates a stable runtime slot with its current provenance step. Reassigning
+        /// the same root replaces the previous value rather than growing the root set.
+        /// </summary>
+        internal void SetRoot(long rootId, int valueId)
         {
-            var needed = valueId + 1;
-            if (_types == null)
+            if (valueId <= 0)
             {
-                _types = new string[Math.Max(64, needed)];
+                _roots.Remove(rootId);
                 return;
             }
 
-            if (needed > _types.Length)
+            _roots[rootId] = valueId;
+        }
+
+        internal void ReleaseRoot(long rootId)
+        {
+            _roots.Remove(rootId);
+        }
+
+        internal int RootCount => _roots.Count;
+
+        /// <summary>
+        /// Reclaims raw steps that cannot contribute to any currently registered root.
+        /// This is intentionally explicit until instrumentation can prove all live local,
+        /// argument, stack, field and return roots at automatic collection safe points.
+        /// </summary>
+        internal ProvenanceCollectionResult CollectGarbage()
+        {
+            var roots = new List<int>(_roots.Count + (FocusValueId > 0 ? 1 : 0));
+            foreach (var pair in _roots)
             {
-                Array.Resize(ref _types, Math.Max(needed, _types.Length * 2));
+                if (pair.Value > 0)
+                {
+                    roots.Add(pair.Value);
+                }
             }
+
+            if (FocusValueId > 0)
+            {
+                roots.Add(FocusValueId);
+            }
+
+            return Buffer.Collect(roots);
         }
     }
 }
