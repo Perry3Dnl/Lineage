@@ -188,8 +188,14 @@ namespace Lineage
             }
         }
 
+        /// <summary>
+        /// Disposal never waits for storage. Pending pages are abandoned, the background
+        /// writer is asked to stop after its current write, and that writer removes the
+        /// temporary session directory when it exits.
+        /// </summary>
         public void Dispose()
         {
+            var cleanupHere = false;
             lock (_gate)
             {
                 if (_disposed)
@@ -197,35 +203,21 @@ namespace Lineage
                     return;
                 }
 
-                _stopping = true;
-                Monitor.PulseAll(_gate);
-            }
-
-            var writer = _writer;
-            if (writer != null && writer != Thread.CurrentThread)
-            {
-                writer.Join();
-            }
-
-            lock (_gate)
-            {
                 _disposed = true;
-                _queue.Clear();
-                _segments.Clear();
-                _bytes = 0;
+                _stopping = true;
+                if (_queue.Count > 0)
+                {
+                    _truncated = true;
+                    _queue.Clear();
+                }
+
+                cleanupHere = _writer == null;
                 Monitor.PulseAll(_gate);
             }
 
-            try
+            if (cleanupHere)
             {
-                if (Directory.Exists(_directory))
-                {
-                    Directory.Delete(_directory, true);
-                }
-            }
-            catch
-            {
-                // Temporary debug storage cleanup is best effort only.
+                CleanupDirectory();
             }
         }
 
@@ -246,53 +238,67 @@ namespace Lineage
 
         private void WriterLoop()
         {
-            while (true)
+            try
             {
-                ColdJournalPage page;
+                while (true)
+                {
+                    ColdJournalPage page;
+                    lock (_gate)
+                    {
+                        while (_queue.Count == 0 && !_stopping)
+                        {
+                            Monitor.Wait(_gate);
+                        }
+
+                        if (_queue.Count == 0 && _stopping)
+                        {
+                            _writing = false;
+                            Monitor.PulseAll(_gate);
+                            return;
+                        }
+
+                        page = _queue.Dequeue();
+                        _writing = true;
+                    }
+
+                    try
+                    {
+                        var delay = Volatile.Read(ref WriterDelayMillisecondsForTests);
+                        if (delay > 0)
+                        {
+                            Thread.Sleep(delay);
+                        }
+
+                        WriteSegment(page);
+                    }
+                    catch
+                    {
+                        lock (_gate)
+                        {
+                            _ioFailed = true;
+                            _truncated = true;
+                        }
+                    }
+                    finally
+                    {
+                        lock (_gate)
+                        {
+                            _writing = false;
+                            Monitor.PulseAll(_gate);
+                        }
+                    }
+                }
+            }
+            finally
+            {
                 lock (_gate)
                 {
-                    while (_queue.Count == 0 && !_stopping)
-                    {
-                        Monitor.Wait(_gate);
-                    }
-
-                    if (_queue.Count == 0 && _stopping)
-                    {
-                        _writing = false;
-                        Monitor.PulseAll(_gate);
-                        return;
-                    }
-
-                    page = _queue.Dequeue();
-                    _writing = true;
+                    _segments.Clear();
+                    _bytes = 0;
+                    Monitor.PulseAll(_gate);
                 }
 
-                try
-                {
-                    var delay = Volatile.Read(ref WriterDelayMillisecondsForTests);
-                    if (delay > 0)
-                    {
-                        Thread.Sleep(delay);
-                    }
-
-                    WriteSegment(page);
-                }
-                catch
-                {
-                    lock (_gate)
-                    {
-                        _ioFailed = true;
-                        _truncated = true;
-                    }
-                }
-                finally
-                {
-                    lock (_gate)
-                    {
-                        _writing = false;
-                        Monitor.PulseAll(_gate);
-                    }
-                }
+                CleanupDirectory();
             }
         }
 
@@ -413,6 +419,21 @@ namespace Lineage
             catch
             {
                 return false;
+            }
+        }
+
+        private void CleanupDirectory()
+        {
+            try
+            {
+                if (Directory.Exists(_directory))
+                {
+                    Directory.Delete(_directory, true);
+                }
+            }
+            catch
+            {
+                // Temporary debug storage cleanup is best effort only.
             }
         }
 
