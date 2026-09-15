@@ -16,92 +16,90 @@ namespace Lineage
             var stepCount = buffer.Count;
             var relations = buffer.Relations;
             var relationCount = buffer.RelationCount;
-            var maxId = steps[stepCount - 1].Id;
-            if (focusValueId > maxId)
+
+            // Step IDs remain stable after provenance GC, so they are deliberately not
+            // used as array indexes here. Report hydration can afford temporary maps.
+            var existing = new HashSet<int>();
+            for (var i = 0; i < stepCount; i++)
+            {
+                if (steps[i].Id > 0)
+                {
+                    existing.Add(steps[i].Id);
+                }
+            }
+
+            if (!existing.Contains(focusValueId))
             {
                 return result;
             }
 
-            // Build a temporary child -> relation index only when a report is requested.
-            // The hot capture path stays append-only and does not maintain a live graph.
-            var heads = new int[maxId + 1];
-            var tails = new int[maxId + 1];
-            for (var i = 0; i < heads.Length; i++)
-            {
-                heads[i] = -1;
-                tails[i] = -1;
-            }
-
-            var next = new int[relationCount];
+            var parentsByChild = new Dictionary<int, List<int>>();
             for (var i = 0; i < relationCount; i++)
             {
-                next[i] = -1;
-                var child = relations[i].ChildStepId;
-                if (child <= 0 || child > maxId)
+                var relation = relations[i];
+                if (!existing.Contains(relation.ChildStepId) || !existing.Contains(relation.ParentStepId))
                 {
                     continue;
                 }
 
-                if (heads[child] < 0)
+                List<int> parents;
+                if (!parentsByChild.TryGetValue(relation.ChildStepId, out parents))
                 {
-                    heads[child] = i;
-                }
-                else
-                {
-                    next[tails[child]] = i;
+                    parents = new List<int>(2);
+                    parentsByChild[relation.ChildStepId] = parents;
                 }
 
-                tails[child] = i;
+                parents.Add(relation.ParentStepId);
             }
 
-            var visited = new bool[maxId + 1];
+            var visited = new HashSet<int>();
             var stack = new Stack<int>();
             stack.Push(focusValueId);
 
             while (stack.Count > 0)
             {
                 var id = stack.Pop();
-                if (id <= 0 || id > maxId || visited[id])
+                if (!existing.Contains(id) || !visited.Add(id))
                 {
                     continue;
                 }
 
-                visited[id] = true;
-                for (var relationIndex = heads[id]; relationIndex >= 0; relationIndex = next[relationIndex])
+                List<int> parents;
+                if (!parentsByChild.TryGetValue(id, out parents))
                 {
-                    var parentId = relations[relationIndex].ParentStepId;
-                    if (parentId > 0 && parentId <= maxId && !visited[parentId])
-                    {
-                        stack.Push(parentId);
-                    }
+                    continue;
+                }
+
+                for (var i = 0; i < parents.Count; i++)
+                {
+                    stack.Push(parents[i]);
                 }
             }
 
             for (var i = 0; i < stepCount; i++)
             {
                 var step = steps[i];
-                if (step.Id <= 0 || step.Id > maxId || !visited[step.Id])
+                if (!visited.Contains(step.Id))
                 {
                     continue;
                 }
 
                 var parent0 = 0;
                 var parent1 = 0;
-                for (var relationIndex = heads[step.Id]; relationIndex >= 0; relationIndex = next[relationIndex])
+                List<int> parents;
+                if (parentsByChild.TryGetValue(step.Id, out parents))
                 {
-                    var parentId = relations[relationIndex].ParentStepId;
-                    if (parentId <= 0)
+                    for (var p = 0; p < parents.Count; p++)
                     {
-                        continue;
-                    }
-
-                    if (parent0 == 0)
-                    {
-                        parent0 = parentId;
-                    }
-                    else if (parent1 == 0 && parent0 != parentId)
-                    {
-                        parent1 = parentId;
+                        var parentId = parents[p];
+                        if (parent0 == 0)
+                        {
+                            parent0 = parentId;
+                        }
+                        else if (parent1 == 0 && parent0 != parentId)
+                        {
+                            parent1 = parentId;
+                        }
                     }
                 }
 
