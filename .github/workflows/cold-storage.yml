@@ -1,0 +1,44 @@
+name: Cold Storage
+
+on:
+  pull_request:
+    paths:
+      - 'src/Lineage.Runtime/**'
+      - 'tools/Lineage.ColdStorage.Stress/**'
+      - 'tests/Lineage.Runtime.Tests/**'
+      - '.github/workflows/cold-storage.yml'
+  workflow_dispatch:
+
+jobs:
+  cold-storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      REPORT_PATH: artifacts/cold-storage-feasibility.json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run cold storage stress harness
+        shell: bash
+        run: |
+          dotnet run --project tools/Lineage.ColdStorage.Stress/Lineage.ColdStorage.Stress.csproj \
+            --configuration Release -- \
+            --events 250000 \
+            --throttled-events 20000 \
+            --capped-events 100000 \
+            --report "$REPORT_PATH"
+
+      - name: Upload cold storage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cold-storage-feasibility
+          path: ${{ env.REPORT_PATH }}
+          if-no-files-found: warn
