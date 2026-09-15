@@ -15,9 +15,9 @@ namespace Lineage.Internal
         /// root id for that object-field slot. Instance keys remain weak; the root itself
         /// contains no reference to the application object.
         /// </summary>
-        public static long Write(object target, int fieldToken, int valueId)
+        public static long Write(object target, int fieldToken, int valueId, int sessionId)
         {
-            if (valueId == 0)
+            if (valueId == 0 || sessionId == 0)
             {
                 return 0;
             }
@@ -27,9 +27,9 @@ namespace Lineage.Internal
                 lock (StaticFields)
                 {
                     FieldState state;
-                    if (!StaticFields.TryGetValue(fieldToken, out state))
+                    if (!StaticFields.TryGetValue(fieldToken, out state) || state.SessionId != sessionId)
                     {
-                        state = new FieldState(AllocateRootId(), valueId);
+                        state = new FieldState(AllocateRootId(), valueId, sessionId);
                     }
                     else
                     {
@@ -45,9 +45,9 @@ namespace Lineage.Internal
             lock (map)
             {
                 FieldState state;
-                if (!map.Fields.TryGetValue(fieldToken, out state))
+                if (!map.Fields.TryGetValue(fieldToken, out state) || state.SessionId != sessionId)
                 {
-                    state = new FieldState(AllocateRootId(), valueId);
+                    state = new FieldState(AllocateRootId(), valueId, sessionId);
                 }
                 else
                 {
@@ -59,14 +59,19 @@ namespace Lineage.Internal
             }
         }
 
-        public static int Read(object target, int fieldToken)
+        public static int Read(object target, int fieldToken, int sessionId)
         {
+            if (sessionId == 0)
+            {
+                return 0;
+            }
+
             if (target == null)
             {
                 lock (StaticFields)
                 {
                     FieldState state;
-                    return StaticFields.TryGetValue(fieldToken, out state) ? state.ValueId : 0;
+                    return StaticFields.TryGetValue(fieldToken, out state) && state.SessionId == sessionId ? state.ValueId : 0;
                 }
             }
 
@@ -79,7 +84,7 @@ namespace Lineage.Internal
             lock (map)
             {
                 FieldState state;
-                return map.Fields.TryGetValue(fieldToken, out state) ? state.ValueId : 0;
+                return map.Fields.TryGetValue(fieldToken, out state) && state.SessionId == sessionId ? state.ValueId : 0;
             }
         }
 
@@ -96,12 +101,14 @@ namespace Lineage.Internal
         private struct FieldState
         {
             public readonly long RootId;
+            public readonly int SessionId;
             public int ValueId;
 
-            public FieldState(long rootId, int valueId)
+            public FieldState(long rootId, int valueId, int sessionId)
             {
                 RootId = rootId;
                 ValueId = valueId;
+                SessionId = sessionId;
             }
         }
     }
