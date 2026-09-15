@@ -1,0 +1,34 @@
+name: Runtime Core
+
+on:
+  pull_request:
+    paths:
+      - "src/Lineage.Runtime/**"
+      - "tests/Lineage.Runtime.Tests/**"
+      - ".github/workflows/runtime-core.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/Lineage.Runtime/**"
+      - "tests/Lineage.Runtime.Tests/**"
+      - ".github/workflows/runtime-core.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Test runtime core
+        run: dotnet test tests/Lineage.Runtime.Tests/Lineage.Runtime.Tests.csproj --configuration Release --nologo

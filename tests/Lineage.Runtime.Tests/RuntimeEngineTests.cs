@@ -160,6 +160,106 @@ namespace Lineage.Runtime.Tests
             }
         }
 
+        [Fact]
+        public void ProvenanceGc_DropsUnreachableStepsAndRelations()
+        {
+            using (var scope = CaptureScope.Enter(16))
+            {
+                var left = Recorder.Produce(201, 0, 0, (int)EventKind.Constant);
+                var right = Recorder.Produce(202, 0, 0, (int)EventKind.Constant);
+                var result = Recorder.Produce(203, left, right, (int)EventKind.LocalStore);
+                var noise = Recorder.Produce(204, 0, 0, (int)EventKind.Constant);
+                var noiseResult = Recorder.Produce(205, noise, 0, (int)EventKind.LocalStore);
+                scope.SetPreview(noiseResult, "discard me");
+                scope.SetTypeName(noiseResult, "System.String");
+
+                scope.SetRoot(1, result);
+                var collected = scope.CollectGarbage();
+
+                Assert.Equal(2, collected.StepsReclaimed);
+                Assert.Equal(1, collected.RelationsReclaimed);
+                Assert.Equal(3, scope.Buffer.Count);
+                Assert.Equal(2, scope.Buffer.RelationCount);
+                Assert.Null(scope.GetPreview(noiseResult));
+                Assert.Null(scope.GetTypeName(noiseResult));
+
+                var slice = CausalSlice.Collect(scope.Buffer, result);
+                Assert.Equal(3, slice.Count);
+                Assert.Equal(left, slice[0].ValueId);
+                Assert.Equal(right, slice[1].ValueId);
+                Assert.Equal(result, slice[2].ValueId);
+            }
+        }
+
+        [Fact]
+        public void ProvenanceGc_SharedAncestorSurvivesUntilLastRootIsReleased()
+        {
+            using (var scope = CaptureScope.Enter(16))
+            {
+                var shared = Recorder.Produce(301, 0, 0, (int)EventKind.Constant);
+                var branchA = Recorder.Produce(302, shared, 0, (int)EventKind.LocalStore);
+                var branchB = Recorder.Produce(303, shared, 0, (int)EventKind.LocalStore);
+
+                scope.SetRoot(10, branchA);
+                scope.SetRoot(20, branchB);
+                var first = scope.CollectGarbage();
+                Assert.Equal(0, first.StepsReclaimed);
+                Assert.Equal(3, scope.Buffer.Count);
+
+                scope.ReleaseRoot(10);
+                var second = scope.CollectGarbage();
+                Assert.Equal(1, second.StepsReclaimed);
+                Assert.Equal(1, second.RelationsReclaimed);
+                Assert.Equal(2, scope.Buffer.Count);
+
+                var branchBSlice = CausalSlice.Collect(scope.Buffer, branchB);
+                Assert.Equal(2, branchBSlice.Count);
+                Assert.Equal(shared, branchBSlice[0].ValueId);
+                Assert.Equal(branchB, branchBSlice[1].ValueId);
+
+                scope.ReleaseRoot(20);
+                var third = scope.CollectGarbage();
+                Assert.Equal(2, third.StepsReclaimed);
+                Assert.Equal(1, third.RelationsReclaimed);
+                Assert.Equal(0, scope.Buffer.Count);
+                Assert.Equal(0, scope.Buffer.RelationCount);
+            }
+        }
+
+        [Fact]
+        public void ProvenanceGc_ReassignmentCompactsWithoutRenumberingSteps()
+        {
+            using (var scope = CaptureScope.Enter(16))
+            {
+                var oldOrigin = Recorder.Produce(401, 0, 0, (int)EventKind.Constant);
+                var oldValue = Recorder.Produce(402, oldOrigin, 0, (int)EventKind.LocalStore);
+                var newValue = Recorder.Produce(403, 0, 0, (int)EventKind.Constant);
+
+                scope.SetRoot(77, oldValue);
+                scope.SetRoot(77, newValue);
+                var collected = scope.CollectGarbage();
+
+                Assert.Equal(2, collected.StepsReclaimed);
+                Assert.Equal(1, scope.Buffer.Count);
+                Assert.Equal(newValue, scope.Buffer.Steps[0].Id);
+
+                var derived = Recorder.Produce(404, newValue, 0, (int)EventKind.LocalStore);
+                scope.SetPreview(derived, "after compaction");
+                scope.SetRoot(77, derived);
+                scope.CollectGarbage();
+
+                Assert.Equal(2, scope.Buffer.Count);
+                Assert.Equal(newValue, scope.Buffer.Steps[0].Id);
+                Assert.Equal(derived, scope.Buffer.Steps[1].Id);
+                Assert.Equal("after compaction", scope.GetPreview(derived));
+
+                var slice = CausalSlice.Collect(scope.Buffer, derived);
+                Assert.Equal(2, slice.Count);
+                Assert.Equal(newValue, slice[0].ValueId);
+                Assert.Equal(derived, slice[1].ValueId);
+            }
+        }
+
         private static void Register(int id, EventKind kind, string localName = "", string callName = "")
         {
             MetadataRegistry.Register(new LocationInfo

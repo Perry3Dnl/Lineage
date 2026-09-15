@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Lineage
 {
@@ -43,8 +44,8 @@ namespace Lineage
                 for (var i = 0; i < _relationCount; i++)
                 {
                     var relation = _relations[i];
-                    var index = relation.ChildStepId - 1;
-                    if (index < 0 || index >= _stepCount)
+                    var index = FindStepIndex(relation.ChildStepId);
+                    if (index < 0)
                     {
                         continue;
                     }
@@ -98,37 +99,55 @@ namespace Lineage
 
         public void SetValue(int valueId, string value)
         {
-            var index = valueId - 1;
-            if (index < 0 || index >= _stepCount || string.IsNullOrEmpty(value))
+            if (value == null)
+            {
+                return;
+            }
+
+            var index = FindStepIndex(valueId);
+            if (index < 0)
             {
                 return;
             }
 
             var step = _steps[index];
-            if (step.Id != valueId)
-            {
-                return;
-            }
-
             step.Value = value;
             _steps[index] = step;
         }
 
         public string GetValue(int valueId)
         {
-            var index = valueId - 1;
-            if (index < 0 || index >= _stepCount)
+            var index = FindStepIndex(valueId);
+            return index >= 0 ? _steps[index].Value : null;
+        }
+
+        public void SetTypeName(int valueId, string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName))
             {
-                return null;
+                return;
+            }
+
+            var index = FindStepIndex(valueId);
+            if (index < 0)
+            {
+                return;
             }
 
             var step = _steps[index];
-            return step.Id == valueId ? step.Value : null;
+            step.TypeName = typeName;
+            _steps[index] = step;
+        }
+
+        public string GetTypeName(int valueId)
+        {
+            var index = FindStepIndex(valueId);
+            return index >= 0 ? _steps[index].TypeName : null;
         }
 
         public void AttachParent(int valueId, int parentId)
         {
-            if (valueId <= 0 || parentId <= 0 || valueId > _stepCount)
+            if (valueId <= 0 || parentId <= 0 || FindStepIndex(valueId) < 0 || FindStepIndex(parentId) < 0)
             {
                 return;
             }
@@ -136,14 +155,162 @@ namespace Lineage
             TryAddRelation(valueId, parentId);
         }
 
+        /// <summary>
+        /// Keeps only steps reachable from the supplied live roots. This deliberately
+        /// runs outside the hot recording path: it builds temporary lookup structures,
+        /// walks the causal graph backwards, then compacts both raw arrays in place.
+        /// Step IDs stay stable even when their physical slots move.
+        /// </summary>
+        public ProvenanceCollectionResult Collect(IReadOnlyCollection<int> roots)
+        {
+            var beforeSteps = _stepCount;
+            var beforeRelations = _relationCount;
+            if (_stepCount == 0)
+            {
+                return new ProvenanceCollectionResult(0, 0);
+            }
+
+            var parentsByChild = new Dictionary<int, List<int>>();
+            for (var i = 0; i < _relationCount; i++)
+            {
+                var relation = _relations[i];
+                List<int> parents;
+                if (!parentsByChild.TryGetValue(relation.ChildStepId, out parents))
+                {
+                    parents = new List<int>(2);
+                    parentsByChild[relation.ChildStepId] = parents;
+                }
+
+                parents.Add(relation.ParentStepId);
+            }
+
+            var live = new HashSet<int>();
+            var stack = new Stack<int>();
+            if (roots != null)
+            {
+                foreach (var root in roots)
+                {
+                    if (root > 0)
+                    {
+                        stack.Push(root);
+                    }
+                }
+            }
+
+            while (stack.Count > 0)
+            {
+                var stepId = stack.Pop();
+                if (stepId <= 0 || live.Contains(stepId) || FindStepIndex(stepId) < 0)
+                {
+                    continue;
+                }
+
+                live.Add(stepId);
+                List<int> parents;
+                if (!parentsByChild.TryGetValue(stepId, out parents))
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < parents.Count; i++)
+                {
+                    stack.Push(parents[i]);
+                }
+            }
+
+            var stepWrite = 0;
+            for (var i = 0; i < _stepCount; i++)
+            {
+                var step = _steps[i];
+                if (!live.Contains(step.Id))
+                {
+                    continue;
+                }
+
+                if (stepWrite != i)
+                {
+                    _steps[stepWrite] = step;
+                }
+
+                stepWrite++;
+            }
+
+            Array.Clear(_steps, stepWrite, _stepCount - stepWrite);
+            _stepCount = stepWrite;
+
+            var relationWrite = 0;
+            for (var i = 0; i < _relationCount; i++)
+            {
+                var relation = _relations[i];
+                if (!live.Contains(relation.ChildStepId) || !live.Contains(relation.ParentStepId))
+                {
+                    continue;
+                }
+
+                if (relationWrite != i)
+                {
+                    _relations[relationWrite] = relation;
+                }
+
+                relationWrite++;
+            }
+
+            Array.Clear(_relations, relationWrite, _relationCount - relationWrite);
+            _relationCount = relationWrite;
+
+            return new ProvenanceCollectionResult(beforeSteps - _stepCount, beforeRelations - _relationCount);
+        }
+
         public void Clear()
         {
             // Steps can contain captured strings, so clear the used range to release
             // references immediately when the raw session is discarded.
             Array.Clear(_steps, 0, _stepCount);
+            Array.Clear(_relations, 0, _relationCount);
             _stepCount = 0;
             _relationCount = 0;
             _dropped = false;
+        }
+
+        private int FindStepIndex(int valueId)
+        {
+            if (valueId <= 0 || _stepCount == 0)
+            {
+                return -1;
+            }
+
+            // Before the first compaction IDs and slots line up, which covers the
+            // overwhelmingly common hot-path SetValue immediately after Produce.
+            var direct = valueId - 1;
+            if (direct >= 0 && direct < _stepCount && _steps[direct].Id == valueId)
+            {
+                return direct;
+            }
+
+            // Compaction preserves ascending Step IDs, so no permanent hash index is
+            // required just to keep stable identities after reclamation.
+            var low = 0;
+            var high = _stepCount - 1;
+            while (low <= high)
+            {
+                var middle = low + ((high - low) / 2);
+                var id = _steps[middle].Id;
+                if (id == valueId)
+                {
+                    return middle;
+                }
+
+                if (id < valueId)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+
+            return -1;
         }
 
         private bool TryAddRelation(int childStepId, int parentStepId)
@@ -162,6 +329,18 @@ namespace Lineage
         {
             _dropped = true;
             LineageMetrics.MarkDropped();
+        }
+    }
+
+    internal struct ProvenanceCollectionResult
+    {
+        public readonly int StepsReclaimed;
+        public readonly int RelationsReclaimed;
+
+        public ProvenanceCollectionResult(int stepsReclaimed, int relationsReclaimed)
+        {
+            StepsReclaimed = stepsReclaimed;
+            RelationsReclaimed = relationsReclaimed;
         }
     }
 }
