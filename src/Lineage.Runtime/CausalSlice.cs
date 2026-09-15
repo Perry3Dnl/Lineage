@@ -7,42 +7,56 @@ namespace Lineage
         public static List<LineageEvent> Collect(EventBuffer buffer, int focusValueId)
         {
             var result = new List<LineageEvent>();
-            if (buffer == null || focusValueId <= 0)
+            if (buffer == null || focusValueId <= 0 || buffer.Count == 0)
             {
                 return result;
             }
 
-            var count = buffer.Count;
-            var events = buffer.Events;
-            var maxId = 0;
-            for (var i = 0; i < count; i++)
+            var steps = buffer.Steps;
+            var stepCount = buffer.Count;
+            var relations = buffer.Relations;
+            var relationCount = buffer.RelationCount;
+            var maxId = steps[stepCount - 1].Id;
+            if (focusValueId > maxId)
             {
-                var id = events[i].ValueId;
-                if (id > maxId)
+                return result;
+            }
+
+            // Build a temporary child -> relation index only when a report is requested.
+            // The hot capture path stays append-only and does not maintain a live graph.
+            var heads = new int[maxId + 1];
+            var tails = new int[maxId + 1];
+            for (var i = 0; i < heads.Length; i++)
+            {
+                heads[i] = -1;
+                tails[i] = -1;
+            }
+
+            var next = new int[relationCount];
+            for (var i = 0; i < relationCount; i++)
+            {
+                next[i] = -1;
+                var child = relations[i].ChildStepId;
+                if (child <= 0 || child > maxId)
                 {
-                    maxId = id;
+                    continue;
                 }
-            }
 
-            var producer = new int[maxId + 1];
-            for (var i = 0; i < producer.Length; i++)
-            {
-                producer[i] = -1;
-            }
-
-            for (var i = 0; i < count; i++)
-            {
-                var id = events[i].ValueId;
-                if (id > 0 && producer[id] < 0)
+                if (heads[child] < 0)
                 {
-                    producer[id] = i;
+                    heads[child] = i;
                 }
+                else
+                {
+                    next[tails[child]] = i;
+                }
+
+                tails[child] = i;
             }
 
-            var keep = new bool[count];
+            var visited = new bool[maxId + 1];
             var stack = new Stack<int>();
             stack.Push(focusValueId);
-            var visited = new bool[maxId + 1];
 
             while (stack.Count > 0)
             {
@@ -53,31 +67,52 @@ namespace Lineage
                 }
 
                 visited[id] = true;
-                var index = producer[id];
-                if (index < 0)
+                for (var relationIndex = heads[id]; relationIndex >= 0; relationIndex = next[relationIndex])
+                {
+                    var parentId = relations[relationIndex].ParentStepId;
+                    if (parentId > 0 && parentId <= maxId && !visited[parentId])
+                    {
+                        stack.Push(parentId);
+                    }
+                }
+            }
+
+            for (var i = 0; i < stepCount; i++)
+            {
+                var step = steps[i];
+                if (step.Id <= 0 || step.Id > maxId || !visited[step.Id])
                 {
                     continue;
                 }
 
-                keep[index] = true;
-                var ev = events[index];
-                if (ev.Parent0 > 0)
+                var parent0 = 0;
+                var parent1 = 0;
+                for (var relationIndex = heads[step.Id]; relationIndex >= 0; relationIndex = next[relationIndex])
                 {
-                    stack.Push(ev.Parent0);
+                    var parentId = relations[relationIndex].ParentStepId;
+                    if (parentId <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (parent0 == 0)
+                    {
+                        parent0 = parentId;
+                    }
+                    else if (parent1 == 0 && parent0 != parentId)
+                    {
+                        parent1 = parentId;
+                    }
                 }
 
-                if (ev.Parent1 > 0)
+                result.Add(new LineageEvent
                 {
-                    stack.Push(ev.Parent1);
-                }
-            }
-
-            for (var i = 0; i < count; i++)
-            {
-                if (keep[i])
-                {
-                    result.Add(events[i]);
-                }
+                    LocationId = step.LocationId,
+                    ValueId = step.Id,
+                    Parent0 = parent0,
+                    Parent1 = parent1,
+                    Kind = step.Kind
+                });
             }
 
             return result;

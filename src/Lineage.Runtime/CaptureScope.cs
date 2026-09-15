@@ -14,7 +14,6 @@ namespace Lineage
         private bool _disposed;
 
         internal EventBuffer Buffer { get; }
-        private string[] _previews;
         private string[] _types;
         internal int NextValueId = 1;
         internal int NextFrameId = 1;
@@ -72,7 +71,6 @@ namespace Lineage
 
             _disposed = true;
             Buffer.Clear();
-            _previews = null;
             _types = null;
             NextValueId = 1;
             NextFrameId = 1;
@@ -87,13 +85,7 @@ namespace Lineage
 
         internal void SetPreview(int valueId, string preview)
         {
-            if (valueId <= 0 || string.IsNullOrEmpty(preview))
-            {
-                return;
-            }
-
-            EnsurePreviews(valueId);
-            _previews[valueId] = preview;
+            Buffer.SetValue(valueId, preview);
         }
 
         internal void SetTypeName(int valueId, string typeName)
@@ -128,27 +120,7 @@ namespace Lineage
 
         internal string GetPreview(int valueId)
         {
-            if (_previews == null || valueId <= 0 || valueId >= _previews.Length)
-            {
-                return null;
-            }
-
-            return _previews[valueId];
-        }
-
-        private void EnsurePreviews(int valueId)
-        {
-            var needed = valueId + 1;
-            if (_previews == null)
-            {
-                _previews = new string[Math.Max(64, needed)];
-                return;
-            }
-
-            if (needed > _previews.Length)
-            {
-                Array.Resize(ref _previews, Math.Max(needed, _previews.Length * 2));
-            }
+            return Buffer.GetValue(valueId);
         }
 
         private void EnsureTypes(int valueId)

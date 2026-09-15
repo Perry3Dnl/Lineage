@@ -117,6 +117,49 @@ namespace Lineage.Runtime.Tests
             }
         }
 
+        [Fact]
+        public void RawCapture_StoresFiveStepsAndSeparatePath()
+        {
+            using (var scope = CaptureScope.Enter(16))
+            {
+                var step1 = Recorder.Produce(101, 0, 0, (int)EventKind.Constant);
+                scope.SetPreview(step1, "10");
+                var step2 = Recorder.Produce(102, 0, 0, (int)EventKind.Constant);
+                scope.SetPreview(step2, "5");
+                var step3 = Recorder.Produce(103, step1, step2, (int)EventKind.LocalStore);
+                scope.SetPreview(step3, "15");
+                var step4 = Recorder.Produce(104, 0, 0, (int)EventKind.Constant);
+                scope.SetPreview(step4, "2");
+                var step5 = Recorder.Produce(105, step3, step4, (int)EventKind.LocalStore);
+                scope.SetPreview(step5, "30");
+
+                Assert.Equal(5, scope.Buffer.Count);
+                Assert.Equal(1, scope.Buffer.Steps[0].Id);
+                Assert.Equal("10", scope.Buffer.Steps[0].Value);
+                Assert.Equal(101, scope.Buffer.Steps[0].LocationId);
+                Assert.Equal(5, scope.Buffer.Steps[4].Id);
+                Assert.Equal("30", scope.Buffer.Steps[4].Value);
+                Assert.Equal(105, scope.Buffer.Steps[4].LocationId);
+
+                Assert.Equal(4, scope.Buffer.RelationCount);
+                Assert.Equal(3, scope.Buffer.Relations[0].ChildStepId);
+                Assert.Equal(1, scope.Buffer.Relations[0].ParentStepId);
+                Assert.Equal(3, scope.Buffer.Relations[1].ChildStepId);
+                Assert.Equal(2, scope.Buffer.Relations[1].ParentStepId);
+                Assert.Equal(5, scope.Buffer.Relations[2].ChildStepId);
+                Assert.Equal(3, scope.Buffer.Relations[2].ParentStepId);
+                Assert.Equal(5, scope.Buffer.Relations[3].ChildStepId);
+                Assert.Equal(4, scope.Buffer.Relations[3].ParentStepId);
+
+                var slice = CausalSlice.Collect(scope.Buffer, step5);
+                Assert.Equal(5, slice.Count);
+                for (var i = 0; i < slice.Count; i++)
+                {
+                    Assert.Equal(i + 1, slice[i].ValueId);
+                }
+            }
+        }
+
         private static void Register(int id, EventKind kind, string localName = "", string callName = "")
         {
             MetadataRegistry.Register(new LocationInfo
