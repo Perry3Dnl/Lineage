@@ -13,6 +13,8 @@ namespace Lineage
 
         private readonly CaptureScope _parent;
         private readonly Dictionary<long, int> _roots = new Dictionary<long, int>();
+        private long[] _frameRootKeys = new long[32];
+        private int _frameRootKeyCount;
         private bool _disposed;
 
         internal EventBuffer Buffer { get; }
@@ -73,6 +75,7 @@ namespace Lineage
             _disposed = true;
             Buffer.Clear();
             _roots.Clear();
+            _frameRootKeyCount = 0;
             NextValueId = 1;
             NextFrameId = 1;
             CurrentFrameId = 0;
@@ -128,6 +131,48 @@ namespace Lineage
             _roots[rootId] = valueId;
         }
 
+        /// <summary>
+        /// Registers a root owned by the current method frame. The key is remembered only
+        /// once, so repeated assignments to the same slot do not grow frame bookkeeping.
+        /// </summary>
+        internal void SetFrameRoot(long rootId, int valueId)
+        {
+            if (valueId <= 0)
+            {
+                return;
+            }
+
+            if (!_roots.ContainsKey(rootId))
+            {
+                EnsureFrameRootCapacity();
+                _frameRootKeys[_frameRootKeyCount++] = rootId;
+            }
+
+            _roots[rootId] = valueId;
+        }
+
+        internal int FrameRootMark => _frameRootKeyCount;
+
+        internal void ReleaseFrameRoots(int mark)
+        {
+            if (mark < 0)
+            {
+                mark = 0;
+            }
+            else if (mark > _frameRootKeyCount)
+            {
+                mark = _frameRootKeyCount;
+            }
+
+            for (var i = _frameRootKeyCount - 1; i >= mark; i--)
+            {
+                _roots.Remove(_frameRootKeys[i]);
+                _frameRootKeys[i] = 0;
+            }
+
+            _frameRootKeyCount = mark;
+        }
+
         internal void ReleaseRoot(long rootId)
         {
             _roots.Remove(rootId);
@@ -137,8 +182,8 @@ namespace Lineage
 
         /// <summary>
         /// Reclaims raw steps that cannot contribute to any currently registered root.
-        /// This is intentionally explicit until instrumentation can prove all live local,
-        /// argument, stack, field and return roots at automatic collection safe points.
+        /// Collection is invoked only at runtime safe points where no unrooted IL
+        /// evaluation-stack values from an instrumented caller can be discarded.
         /// </summary>
         internal ProvenanceCollectionResult CollectGarbage()
         {
@@ -157,6 +202,16 @@ namespace Lineage
             }
 
             return Buffer.Collect(roots);
+        }
+
+        private void EnsureFrameRootCapacity()
+        {
+            if (_frameRootKeyCount < _frameRootKeys.Length)
+            {
+                return;
+            }
+
+            Array.Resize(ref _frameRootKeys, _frameRootKeys.Length * 2);
         }
     }
 }
