@@ -4,3 +4,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Lineage.Instrumentation.Tests")]
 [assembly: InternalsVisibleTo("Lineage.Integration.Tests")]
 [assembly: InternalsVisibleTo("Lineage.Stress")]
+[assembly: InternalsVisibleTo("Lineage.ColdStorage.Stress")]
