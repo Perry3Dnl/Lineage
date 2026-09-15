@@ -10,141 +10,159 @@
 </p>
 
 <p align="center">
-  <strong>v0.1.0</strong> · Experimental early release
+  <strong>v0.2.0</strong> · Provenance Core
 </p>
 
 ---
 
-**Lineage** is an experimental .NET value-provenance debugger. Its purpose is to answer one question extremely well:
+**Lineage** is an experimental .NET value-provenance debugger built around one question:
 
 > **Why does this value have this value?**
 
-Traditional debuggers are excellent at showing the current state of a program. They show variables, call stacks, breakpoints, objects, memory, and execution flow. What they do not naturally show is the complete history behind a particular runtime value.
-
-Lineage is intended to fill that gap.
-
-## Vision
-
-When a developer encounters a value that is wrong, surprising, or simply difficult to understand, Lineage should make it possible to select that value and immediately inspect how it came into existence.
-
-Instead of forcing the developer to manually work backward through methods, conditions, calculations, configuration, mappings, and intermediate values, Lineage records the relationships that produced the value and presents them as an explorable lineage tree.
+Traditional debuggers are excellent at showing current program state. Lineage is intended to show the causal history behind a runtime value: the inputs, assignments, calculations, calls, field mutations, decisions, and source locations that contributed to it.
 
 The result should feel less like inspecting program state and more like inspecting **cause and effect**.
 
+## Vision
+
+When a developer encounters a value that is wrong, surprising, or difficult to understand, Lineage should make it possible to inspect how that value came into existence without manually walking backward through every method and intermediate variable.
+
+The lineage tree is the evidence. It should show the important causal path first, keep alternate dependencies available, preserve links back to source, and make the final value understandable in terms of the values that produced it.
+
+The ideal workflow is:
+
+> **Breakpoint → choose a suspicious value → Show Lineage → inspect the causal path**
+
+Explicit `Focus(...)` and `.Trace()` calls remain useful for tests and manual workflows, but they are not the long-term product boundary.
+
 ### The product promise
 
-Lineage should reveal the inputs that contributed to a value, the transformations that changed it, the decisions that affected it, and the source locations responsible for each meaningful step.
+Lineage should reveal:
 
-The developer should be able to follow one focused path from the final value back to its meaningful origin, while still being able to inspect alternate dependencies when needed.
+- which inputs contributed to a value;
+- which transformations changed it;
+- where assignments and field mutations occurred;
+- which calls and decisions affected the result;
+- the source location of each meaningful step;
+- whether older provenance was unavailable because a configured storage budget was reached.
 
-The visible tree is only one part of the product. Underneath it, Lineage is building a runtime model of **data provenance**: a record of how values relate to one another during execution.
-
-Over time, that provenance model should understand more of the behavior that matters in real .NET applications, including calculations, assignments, parameters, return values, object properties, collection transformations, configuration values, branching decisions, asynchronous operations, and other common value-producing behavior.
-
-The UI then turns that provenance into something a developer can reason about.
-
-### The ideal debugging experience
-
-Using Lineage should eventually feel natural inside the debugger.
-
-A developer encounters an unexpected value, asks Lineage to show its history, and gets a focused tree rather than a giant execution trace.
-
-The important causal path is visually emphasized. Unrelated dependencies remain available, but they do not dominate the view. Each node should communicate what happened, what value existed at that point, and where it came from in the source.
-
-From there, the developer should be able to navigate directly to the relevant code and continue investigating.
-
-The goal is to reduce debugging from:
-
-> “Where should I start looking?”
-
-into:
-
-> “This is the chain that produced the value.”
-
-### The problems Lineage should solve
-
-Lineage is especially useful when values are produced through several layers of application logic.
-
-That includes financial calculations, pricing rules, permissions, configuration-driven behavior, mapping layers, business rules, validation, data transformations, collection pipelines, nested service calls, and other situations where the final value is far removed from its original inputs.
-
-It should become useful for questions such as:
-
-- Why is this number wrong?
-- Why is this property null?
-- Where did this value change?
-- Why did this decision produce this result?
-- Which input actually caused this outcome?
-- Why is this execution different from another one?
-
-These are all variations of the same underlying problem: understanding provenance.
-
-### What Lineage is not
-
-Lineage is not intended to become a general profiler, logging framework, distributed tracing platform, application-monitoring system, or replacement for the Visual Studio debugger.
-
-Those tools answer different questions.
-
-Lineage should complement them by specializing in **value history**.
-
-It is not primarily about what methods ran. It is not primarily about how long something took. It is not primarily about system health.
-
-It is about **how a particular value was produced**.
-
-That distinction is important because it gives the project a clear identity and a useful boundary for future features.
-
-### Long-term direction
-
-The strongest version of Lineage goes beyond displaying a graph.
-
-The lineage tree should remain the evidence, but Lineage should eventually be able to summarize the important causal chain in human-readable form. Explanations should always be grounded in captured runtime provenance rather than inferred from source code alone.
-
-Another important direction is comparison: being able to compare the provenance of two values or two executions and identify the first meaningful point where they diverged. That could make Lineage especially useful for regressions, failed tests, environment differences, and difficult “works on my machine” problems.
-
-The long-term combination is:
-
-**runtime evidence + source navigation + visual causality + understandable explanation**
-
-### Product principles
-
-Lineage should be built around a small set of principles:
-
-- **Focused, not noisy.** Show the lineage of the value the developer cares about, not every event that occurred.
-- **Evidence-based.** Explanations should come from captured runtime provenance rather than guesses based only on source code.
-- **Source-connected.** Every meaningful lineage step should lead back to the relevant source location when possible.
-- **Low-friction.** Developers should not need to heavily modify their application just to inspect a value.
-- **Progressively detailed.** Start with the important causal path, while allowing deeper exploration when needed.
-
-The guiding question for the project is simple:
+The guiding question for the project remains:
 
 > **Does this feature help a developer understand why a value exists?**
 
 If it does, it probably belongs in Lineage. If it does not, it probably belongs somewhere else.
 
+### What Lineage is not
+
+Lineage is not intended to become a general profiler, logging framework, distributed tracing platform, application-monitoring system, or replacement for the Visual Studio debugger.
+
+Those tools answer different questions. Lineage specializes in **value history**.
+
+It is not primarily about which methods ran, how long the application took, or whether the system is healthy. It is about **how a particular value was produced**.
+
 ## Preview
 
-> Illustrative preview of the Lineage tool-window concept. The UI is still evolving.
+> Product-direction preview for the Lineage tool window, now grounded in the v0.2.0 runtime model. The exact UI can still evolve, but typed values, causal Steps, source locations, hot RAM, cold-journal storage, and explicit truncation state are all concepts the current core now understands.
 
 <p align="center">
-  <img src="assets/tree-view-example.svg" alt="Illustrative example of the Lineage tree view" width="100%" />
+  <img src="assets/lineage-tool-window-v0.2.svg" alt="Lineage v0.2 tool-window concept showing a typed value provenance tree" width="100%" />
 </p>
 
-The blue path represents the selected lineage chain: the path that explains how the focused value reached its result. Other dependencies remain visible in black so you can inspect alternate inputs without losing context.
+The focused value sits at the top of the causal graph. Parent nodes explain the values that contributed to it, while the details pane can expose the typed value, event kind, operation, source location, and raw provenance identity. The raw-Step view is deliberately separate from the human-readable graph: runtime capture stays compact, while interpretation belongs in the viewer.
+
+## v0.2.0 — Provenance Core
+
+`v0.2.0` moves Lineage from a basic tracing prototype toward a bounded runtime provenance recorder.
+
+The central model is intentionally simple:
+
+```text
+Step
+  Id
+  LocationId
+  EventKind
+  ValueKind
+  compact typed payload
+
+Relation
+  ChildStepId
+  ParentStepId
+```
+
+Runtime Lineage records compact execution facts. Viewer Lineage hydrates those facts into a human-readable causal graph only when a report is requested.
+
+> **Capture the facts in a dense form while the program runs. Expand those facts into meaning only when someone asks a question.**
+
+### Runtime lifetime model
+
+Provenance now follows value lifetime rather than accumulating forever.
+
+- locals and arguments become runtime roots automatically;
+- field writes move stable field roots instead of endlessly adding new ones;
+- object-field tracking is weak and does not keep application objects alive;
+- dead object roots are retired at safe collection points;
+- unreachable Steps and Relations are reclaimed while stable Step IDs are preserved.
+
+The governing rule is:
+
+> **A Step can be dropped when nothing still alive can need that Step to explain its history.**
+
+### Bounded hot RAM + cold journal
+
+Lineage records into RAM first. Disk is an overflow tier, not the hot path.
+
+```text
+new Steps
+   ↓
+hot RAM
+   ↓
+reclaim dead provenance first
+   ↓
+still-live old ancestry under pressure
+   ↓
+bounded background spill queue
+   ↓
+cold journal on disk
+```
+
+The cold journal defaults to a **100 MiB hard disk budget**. It is created lazily only when the hot store is under pressure. Pages are handed to a background writer so the application thread does not perform file I/O.
+
+If storage cannot keep up or the disk budget is exhausted, Lineage prefers dropping old provenance over stalling the debugged application. Reports are explicitly marked incomplete rather than pretending the remaining graph is the complete origin.
+
+### Typed value capture
+
+Ordinary value types no longer need to be stored as eager preview strings. The raw Step carries a semantic `ValueKind` and compact payload; formatting is deferred until report/viewer hydration.
+
+The current typed-value foundation covers or recognizes:
+
+- `bool`, `char`;
+- signed and unsigned integer widths;
+- native integer types;
+- `float`, `double`, `decimal`;
+- enums;
+- `DateTime`, `DateTimeOffset`, `TimeSpan`, `Guid`;
+- modern runtime value types including `Half`, `Int128`, `UInt128`, `DateOnly`, and `TimeOnly` while keeping `Lineage.Runtime` compatible with `netstandard2.0`;
+- user-defined structs and `ValueTuple` as explicit value categories for the next structural-display pass.
+
+Custom struct/tuple field decomposition and preservation of the original nullable declaration are still follow-up work. Reference-type semantics are deliberately a later phase.
 
 ## What it does today
 
-The current `v0.1.0` foundation combines three pieces:
+The current `v0.2.0` foundation combines five pieces:
 
-- **Build-time instrumentation** — `Lineage.Instrumentation` rewrites compiled assemblies and injects lineage recording hooks.
-- **Lightweight runtime capture** — `Lineage.Runtime` records value relationships and produces a `LineageReport` with origins, nodes, edges, source locations, and value previews.
-- **Visual Studio integration** — the VSIX provides a Lineage tool window for exploring captured value history and navigating back to source.
+- **Build-time instrumentation** — `Lineage.Instrumentation` rewrites compiled assemblies and injects provenance hooks for constants, locals, arguments, calls, returns, arithmetic, comparisons, branches, and field reads/writes.
+- **Compact runtime capture** — `Lineage.Runtime` records normalized Steps and child→parent Relations with stable occurrence IDs.
+- **Automatic provenance lifetime tracking** — locals, arguments, fields, weak object lifetimes, and safe-boundary collection keep reclaimable history bounded.
+- **RAM-first cold storage** — still-needed old ancestry can spill asynchronously to a rolling journal rather than forcing RAM to grow indefinitely.
+- **Visual Studio/report integration** — reports expose semantic nodes, typed value information, source locations, raw provenance, and explicit incomplete-history state for the viewer/tool window.
 
-The repository also contains a standalone WPF viewer, sample projects, and automated tests.
+The repository also contains a standalone WPF viewer, sample projects, runtime/instrumentation/IDE/integration tests, long-session feasibility tooling, and cold-storage stress tooling.
 
 ## Repository layout
 
 ```text
 src/
-  Lineage.Runtime/          Runtime capture and public API
+  Lineage.Runtime/          Runtime recorder, typed values, GC, cold journal, reports
   Lineage.Instrumentation/  Assembly instrumentation tool
   Lineage.Ide/              Shared graph/session UI logic
   Lineage.VisualStudio/     Visual Studio extension (VSIX)
@@ -152,6 +170,8 @@ src/
   Lineage.Package/          NuGet package project + MSBuild targets
 samples/                    Example projects
 tests/                      Runtime, instrumentation, IDE, and integration tests
+tools/                      Feasibility and cold-storage stress harnesses
+docs/                       Architecture and benchmark notes
 Lineage.Bundle.proj         Builds the NuGet + VSIX bundle
 ```
 
@@ -159,10 +179,10 @@ Lineage.Bundle.proj         Builds the NuGet + VSIX bundle
 
 The current source targets:
 
-- `netstandard2.0` for the runtime and package facade
-- `net10.0` for the instrumentation tool and console/integration samples
-- `net8.0-windows` for the standalone viewer
-- Visual Studio extension targets compatible with the manifest's Visual Studio `17.x`–`18.x` range
+- `netstandard2.0` for the runtime and package facade;
+- `net10.0` for instrumentation and current stress/integration tooling;
+- `net8.0-windows` for the standalone viewer;
+- Visual Studio extension targets compatible with the manifest's Visual Studio `17.x`–`18.x` range.
 
 A matching .NET SDK and Visual Studio workload are required for the projects you build.
 
@@ -184,10 +204,10 @@ The bundle target writes its outputs under `artifacts/`.
 
 ## Use the package
 
-For a locally built package, add the generated package source and install `Lineage` version `0.1.0`:
+For a locally built package, add the generated package source and install `Lineage` version `0.2.0`:
 
 ```bash
-dotnet add package Lineage --version 0.1.0 --source <path-to-artifacts>
+dotnet add package Lineage --version 0.2.0 --source <path-to-artifacts>
 ```
 
 The package imports `Lineage.targets`, which enables instrumentation after compilation. Instrumentation can be disabled for a project with:
@@ -200,14 +220,13 @@ The package imports `Lineage.targets`, which enables instrumentation after compi
 
 ## Trace a value
 
-The runtime exposes both an explicit focus API and a fluent trace helper:
+The runtime currently exposes an explicit focus API and a fluent trace helper:
 
 ```csharp
 using Lineage;
 
 var total = subtotal - discount;
 
-// Produce a report focused on this value.
 Lineage.Lineage.Focus(total);
 
 // Or trace inline while preserving the value.
@@ -217,16 +236,18 @@ var report = Lineage.Lineage.LastReport;
 Console.WriteLine(report);
 ```
 
-Runtime behavior can be configured through `LineageSettings`, including capture mode, IDE publishing, console output, and break-on-report behavior.
+Runtime behavior can be configured through `LineageSettings`, including capture mode, IDE publishing, console output, break-on-report behavior, and cold-storage policy.
 
 ## Visual Studio workflow
 
-Build/install the VSIX from the bundle, open a project using Lineage, rebuild so instrumentation runs, and debug normally. The extension's Lineage tool window consumes published reports and lets you inspect the graph behind the focused value and navigate to recorded source locations.
+Build/install the VSIX from the bundle, open a project using Lineage, rebuild so instrumentation runs, and debug normally. The current extension consumes published reports and lets you inspect captured provenance and navigate to recorded source locations.
+
+The richer tool-window composition shown above is the direction for presenting the provenance model now available in `v0.2.0`.
 
 ## Release version
 
-This repository is currently prepared as **v0.1.0**. The shared package version is defined in `Directory.Build.props`; the bundle project and VSIX metadata are kept in sync with it for this release.
+This repository is prepared as **v0.2.0 — Provenance Core**. The shared package version is defined in `Directory.Build.props`; the bundle fallback, package documentation, and VSIX manifest are kept in sync with it.
 
 ## Contributing
 
-Issues and pull requests are welcome. If you are changing instrumentation behavior, add or update coverage in `tests/Lineage.Instrumentation.Tests` and `tests/Lineage.Integration.Tests`; runtime/report changes should be covered in `tests/Lineage.Runtime.Tests`.
+Issues and pull requests are welcome. Instrumentation changes should add or update coverage in `tests/Lineage.Instrumentation.Tests` and `tests/Lineage.Integration.Tests`; runtime/provenance/report changes should be covered in `tests/Lineage.Runtime.Tests`.
