@@ -20,8 +20,8 @@ namespace Lineage
                 var info = MetadataRegistry.Get(ev.LocationId);
                 var operation = info != null ? info.Operation : OperationKind.None;
                 var opaque = info != null && info.IsOpaque;
-                var preview = scope != null ? scope.GetPreview(ev.ValueId) : null;
-                var typeName = scope != null ? scope.GetTypeName(ev.ValueId) : null;
+                var preview = ev.Value ?? (scope != null ? scope.GetPreview(ev.ValueId) : null);
+                var typeName = ev.TypeName ?? (scope != null ? scope.GetTypeName(ev.ValueId) : null);
                 var availability = string.IsNullOrEmpty(preview) ? ValueAvailability.NotCaptured : ValueAvailability.Available;
                 raw[i] = new LineageNode(
                     ev.ValueId,
