@@ -30,20 +30,17 @@ namespace Lineage
         internal int ColdStorageSegments => _journal != null ? _journal.SegmentCount : 0;
         internal int ColdStorageQueuedPages => _journal != null ? _journal.QueuedPageCount : 0;
 
-        // Compatibility view for existing consumers. Raw capture is stored as separate
-        // step and relation arrays; events are hydrated only when explicitly requested.
         public LineageEvent[] Events
         {
             get
             {
                 var snapshot = CreateSnapshot();
-                var steps = snapshot.Steps;
-                var relations = snapshot.Relations;
-                var events = new LineageEvent[steps.Length];
-                var indexes = new Dictionary<int, int>(steps.Length);
-                for (var i = 0; i < steps.Length; i++)
+                var events = new LineageEvent[snapshot.Steps.Length];
+                var indexes = new Dictionary<int, int>(snapshot.Steps.Length);
+
+                for (var i = 0; i < snapshot.Steps.Length; i++)
                 {
-                    var step = steps[i];
+                    var step = snapshot.Steps[i];
                     indexes[step.Id] = i;
                     events[i] = new LineageEvent
                     {
@@ -55,9 +52,9 @@ namespace Lineage
                     };
                 }
 
-                for (var i = 0; i < relations.Length; i++)
+                for (var i = 0; i < snapshot.Relations.Length; i++)
                 {
-                    var relation = relations[i];
+                    var relation = snapshot.Relations[i];
                     int index;
                     if (!indexes.TryGetValue(relation.ChildStepId, out index))
                     {
@@ -83,8 +80,6 @@ namespace Lineage
 
         public bool TryAdd(LineageEvent ev)
         {
-            // Method-entry and other context-only events have no produced value and do
-            // not belong in the raw value-step table.
             if (ev.ValueId <= 0)
             {
                 return true;
@@ -167,8 +162,8 @@ namespace Lineage
 
         public void AttachParent(int valueId, int parentId)
         {
-            // The parent may already be cold. Only the child must still be in the hot
-            // store because the relation itself belongs to the child's page.
+            // The parent may already be cold; the child must still be hot because the
+            // relation is stored with the child's page.
             if (valueId <= 0 || parentId <= 0 || FindStepIndex(valueId) < 0)
             {
                 return;
@@ -177,11 +172,6 @@ namespace Lineage
             TryAddRelation(valueId, parentId);
         }
 
-        /// <summary>
-        /// Keeps only hot steps reachable from the supplied live roots. Parents that have
-        /// already moved to cold storage remain as cross-tier relations and are resolved
-        /// later during explicit report hydration.
-        /// </summary>
         public ProvenanceCollectionResult Collect(IReadOnlyCollection<int> roots)
         {
             var beforeSteps = _stepCount;
@@ -280,8 +270,8 @@ namespace Lineage
                     continue;
                 }
 
-                // A missing parent can be a valid cold parent. A parent that was hot but
-                // was not live is genuinely dead and the relation can be discarded.
+                // A parent absent from the hot store can legitimately live in a cold
+                // segment. Only discard a relation when its parent was hot and collected.
                 if (existing.Contains(relation.ParentStepId) && !live.Contains(relation.ParentStepId))
                 {
                     continue;
@@ -333,8 +323,6 @@ namespace Lineage
 
         public void Clear()
         {
-            // Steps can contain captured strings, so clear the used range to release
-            // references immediately when the raw session is discarded.
             Array.Clear(_steps, 0, _stepCount);
             Array.Clear(_relations, 0, _relationCount);
             _stepCount = 0;
@@ -356,16 +344,12 @@ namespace Lineage
                 return -1;
             }
 
-            // Before the first compaction/spill IDs and slots line up, which covers the
-            // overwhelmingly common hot-path SetValue immediately after Produce.
             var direct = valueId - 1;
             if (direct >= 0 && direct < _stepCount && _steps[direct].Id == valueId)
             {
                 return direct;
             }
 
-            // Compaction and spilling preserve ascending Step IDs, so no permanent hash
-            // index is required just to keep stable identities after reclamation.
             var low = 0;
             var high = _stepCount - 1;
             while (low <= high)
@@ -415,6 +399,15 @@ namespace Lineage
                 return;
             }
 
+            // Paging a hot store that is no larger than one configured page buys no useful
+            // headroom and breaks the semantics of deliberately tiny buffers used by the
+            // in-memory collector. Such scopes remain RAM-only and retain the old behavior.
+            var configuredPageSteps = Math.Max(1, LineageSettings.ColdStoragePageSteps);
+            if (_steps.Length <= configuredPageSteps)
+            {
+                return;
+            }
+
             var highPercent = Clamp(LineageSettings.ColdStorageHighWatermarkPercent, 1, 99);
             var targetPercent = Clamp(LineageSettings.ColdStorageTargetPercent, 0, highPercent - 1);
             var highSteps = Math.Max(1, (_steps.Length * highPercent) / 100);
@@ -425,15 +418,19 @@ namespace Lineage
                 return;
             }
 
+            var maxSpillable = _stepCount - 1;
+            if (maxSpillable <= 0)
+            {
+                return;
+            }
+
             EnsureJournal();
-            var pageSteps = Math.Max(1, Math.Min(LineageSettings.ColdStoragePageSteps, _steps.Length));
+            var pageSteps = Math.Min(configuredPageSteps, maxSpillable);
 
             if (emergency)
             {
-                // One small oldest slice is sufficient to regain headroom. Never spill
-                // the entire hot store merely because a tiny test/application capacity is
-                // smaller than the configured page size.
                 var emergencyCount = Math.Min(pageSteps, Math.Max(1, _stepCount / 4));
+                emergencyCount = Math.Min(emergencyCount, maxSpillable);
                 if (_journal.CanAccept)
                 {
                     var page = ExtractOldestPage(emergencyCount);
@@ -455,12 +452,12 @@ namespace Lineage
 
             var targetSteps = (_steps.Length * targetPercent) / 100;
             var targetRelations = (_relations.Length * targetPercent) / 100;
-            while ((_stepCount > targetSteps || _relationCount > targetRelations) && _stepCount > 0)
+            while ((_stepCount > targetSteps || _relationCount > targetRelations) && _stepCount > 1)
             {
                 if (!_journal.CanAccept)
                 {
-                    // The writer is behind, but there is still hot headroom. Return to the
-                    // application immediately and try again on a later pressure check.
+                    // Disk is behind, but RAM still has headroom. The recorder never waits;
+                    // it will retry on later pressure checks and only truncates at emergency.
                     break;
                 }
 
@@ -473,12 +470,18 @@ namespace Lineage
                     break;
                 }
 
-                var count = Math.Min(pageSteps, Math.Min(_stepCount, desired));
+                maxSpillable = _stepCount - 1;
+                var count = Math.Min(pageSteps, Math.Min(maxSpillable, desired));
+                if (count <= 0)
+                {
+                    break;
+                }
+
                 var page = ExtractOldestPage(count);
                 if (!_journal.TryEnqueue(page))
                 {
-                    // The page has already left the hot store. Record the gap rather than
-                    // synchronously retrying I/O on the application thread.
+                    // The page already left RAM. Make the missing history explicit rather
+                    // than retrying synchronously on the application thread.
                     _journal.MarkTruncated();
                     MarkDropped();
                     break;
@@ -488,15 +491,13 @@ namespace Lineage
 
         private void EnsureJournal()
         {
-            if (_journal != null)
+            if (_journal == null)
             {
-                return;
+                _journal = new ColdJournal(
+                    LineageSettings.ColdStorageMaxBytes,
+                    LineageSettings.ColdStorageQueuePages,
+                    LineageSettings.ColdStorageDirectory);
             }
-
-            _journal = new ColdJournal(
-                LineageSettings.ColdStorageMaxBytes,
-                LineageSettings.ColdStorageQueuePages,
-                LineageSettings.ColdStorageDirectory);
         }
 
         private ColdJournalPage ExtractOldestPage(int count)
@@ -558,9 +559,10 @@ namespace Lineage
                 return;
             }
 
-            count = Math.Min(count, _stepCount);
+            count = Math.Min(count, Math.Max(1, _stepCount - 1));
             var firstStepId = _steps[0].Id;
             var lastStepId = _steps[count - 1].Id;
+
             var relationWrite = 0;
             for (var i = 0; i < _relationCount; i++)
             {
