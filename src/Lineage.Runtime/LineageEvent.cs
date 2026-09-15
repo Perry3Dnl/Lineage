@@ -8,5 +8,11 @@ namespace Lineage
         public int Parent0;
         public int Parent1;
         public EventKind Kind;
+
+        // These fields are populated only when raw provenance is hydrated for a report.
+        // The hot recorder still stores values on LineageStep and does not allocate event
+        // objects or strings merely because these compatibility fields exist.
+        public string Value;
+        public string TypeName;
     }
 }

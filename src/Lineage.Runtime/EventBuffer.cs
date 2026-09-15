@@ -10,6 +10,7 @@ namespace Lineage
         private int _stepCount;
         private int _relationCount;
         private bool _dropped;
+        private ColdJournal _journal;
 
         public EventBuffer(int capacity)
         {
@@ -19,33 +20,43 @@ namespace Lineage
 
         public int Count => _stepCount;
         public int RelationCount => _relationCount;
-        public bool Dropped => _dropped;
+        public int Capacity => _steps.Length;
+        public bool Dropped => _dropped || (_journal != null && _journal.Truncated);
         public LineageStep[] Steps => _steps;
         public LineageRelation[] Relations => _relations;
 
-        // Compatibility view for existing consumers. Raw capture is stored as separate
-        // step and relation arrays; events are hydrated only when explicitly requested.
+        internal bool ColdStorageActive => _journal != null && _journal.Active;
+        internal long ColdStorageBytes => _journal != null ? _journal.Bytes : 0;
+        internal int ColdStorageSegments => _journal != null ? _journal.SegmentCount : 0;
+        internal int ColdStorageQueuedPages => _journal != null ? _journal.QueuedPageCount : 0;
+
         public LineageEvent[] Events
         {
             get
             {
-                var events = new LineageEvent[_stepCount];
-                for (var i = 0; i < _stepCount; i++)
+                var snapshot = CreateSnapshot();
+                var events = new LineageEvent[snapshot.Steps.Length];
+                var indexes = new Dictionary<int, int>(snapshot.Steps.Length);
+
+                for (var i = 0; i < snapshot.Steps.Length; i++)
                 {
-                    var step = _steps[i];
+                    var step = snapshot.Steps[i];
+                    indexes[step.Id] = i;
                     events[i] = new LineageEvent
                     {
                         LocationId = step.LocationId,
                         ValueId = step.Id,
-                        Kind = step.Kind
+                        Kind = step.Kind,
+                        Value = step.Value,
+                        TypeName = step.TypeName
                     };
                 }
 
-                for (var i = 0; i < _relationCount; i++)
+                for (var i = 0; i < snapshot.Relations.Length; i++)
                 {
-                    var relation = _relations[i];
-                    var index = FindStepIndex(relation.ChildStepId);
-                    if (index < 0)
+                    var relation = snapshot.Relations[i];
+                    int index;
+                    if (!indexes.TryGetValue(relation.ChildStepId, out index))
                     {
                         continue;
                     }
@@ -69,11 +80,15 @@ namespace Lineage
 
         public bool TryAdd(LineageEvent ev)
         {
-            // Method-entry and other context-only events have no produced value and do
-            // not belong in the raw value-step table.
             if (ev.ValueId <= 0)
             {
                 return true;
+            }
+
+            MaybeSpill(false);
+            if (_stepCount >= _steps.Length)
+            {
+                MaybeSpill(true);
             }
 
             if (_stepCount >= _steps.Length)
@@ -147,7 +162,9 @@ namespace Lineage
 
         public void AttachParent(int valueId, int parentId)
         {
-            if (valueId <= 0 || parentId <= 0 || FindStepIndex(valueId) < 0 || FindStepIndex(parentId) < 0)
+            // The parent may already be cold; the child must still be hot because the
+            // relation is stored with the child's page.
+            if (valueId <= 0 || parentId <= 0 || FindStepIndex(valueId) < 0)
             {
                 return;
             }
@@ -155,12 +172,6 @@ namespace Lineage
             TryAddRelation(valueId, parentId);
         }
 
-        /// <summary>
-        /// Keeps only steps reachable from the supplied live roots. This deliberately
-        /// runs outside the hot recording path: it builds temporary lookup structures,
-        /// walks the causal graph backwards, then compacts both raw arrays in place.
-        /// Step IDs stay stable even when their physical slots move.
-        /// </summary>
         public ProvenanceCollectionResult Collect(IReadOnlyCollection<int> roots)
         {
             var beforeSteps = _stepCount;
@@ -168,6 +179,15 @@ namespace Lineage
             if (_stepCount == 0)
             {
                 return new ProvenanceCollectionResult(0, 0);
+            }
+
+            var existing = new HashSet<int>();
+            for (var i = 0; i < _stepCount; i++)
+            {
+                if (_steps[i].Id > 0)
+                {
+                    existing.Add(_steps[i].Id);
+                }
             }
 
             var parentsByChild = new Dictionary<int, List<int>>();
@@ -200,7 +220,7 @@ namespace Lineage
             while (stack.Count > 0)
             {
                 var stepId = stack.Pop();
-                if (stepId <= 0 || live.Contains(stepId) || FindStepIndex(stepId) < 0)
+                if (stepId <= 0 || live.Contains(stepId) || !existing.Contains(stepId))
                 {
                     continue;
                 }
@@ -214,7 +234,10 @@ namespace Lineage
 
                 for (var i = 0; i < parents.Count; i++)
                 {
-                    stack.Push(parents[i]);
+                    if (existing.Contains(parents[i]))
+                    {
+                        stack.Push(parents[i]);
+                    }
                 }
             }
 
@@ -242,7 +265,14 @@ namespace Lineage
             for (var i = 0; i < _relationCount; i++)
             {
                 var relation = _relations[i];
-                if (!live.Contains(relation.ChildStepId) || !live.Contains(relation.ParentStepId))
+                if (!live.Contains(relation.ChildStepId))
+                {
+                    continue;
+                }
+
+                // A parent absent from the hot store can legitimately live in a cold
+                // segment. Only discard a relation when its parent was hot and collected.
+                if (existing.Contains(relation.ParentStepId) && !live.Contains(relation.ParentStepId))
                 {
                     continue;
                 }
@@ -258,18 +288,53 @@ namespace Lineage
             Array.Clear(_relations, relationWrite, _relationCount - relationWrite);
             _relationCount = relationWrite;
 
+            MaybeSpill(false);
             return new ProvenanceCollectionResult(beforeSteps - _stepCount, beforeRelations - _relationCount);
+        }
+
+        internal ProvenanceSnapshot CreateSnapshot()
+        {
+            var cold = _journal != null ? _journal.ReadSnapshot() : new ProvenanceSnapshot(null, null);
+            var steps = new LineageStep[cold.Steps.Length + _stepCount];
+            var relations = new LineageRelation[cold.Relations.Length + _relationCount];
+
+            if (cold.Steps.Length > 0)
+            {
+                Array.Copy(cold.Steps, 0, steps, 0, cold.Steps.Length);
+            }
+
+            if (_stepCount > 0)
+            {
+                Array.Copy(_steps, 0, steps, cold.Steps.Length, _stepCount);
+            }
+
+            if (cold.Relations.Length > 0)
+            {
+                Array.Copy(cold.Relations, 0, relations, 0, cold.Relations.Length);
+            }
+
+            if (_relationCount > 0)
+            {
+                Array.Copy(_relations, 0, relations, cold.Relations.Length, _relationCount);
+            }
+
+            return new ProvenanceSnapshot(steps, relations);
         }
 
         public void Clear()
         {
-            // Steps can contain captured strings, so clear the used range to release
-            // references immediately when the raw session is discarded.
             Array.Clear(_steps, 0, _stepCount);
             Array.Clear(_relations, 0, _relationCount);
             _stepCount = 0;
             _relationCount = 0;
             _dropped = false;
+
+            var journal = _journal;
+            _journal = null;
+            if (journal != null)
+            {
+                journal.Dispose();
+            }
         }
 
         private int FindStepIndex(int valueId)
@@ -279,16 +344,12 @@ namespace Lineage
                 return -1;
             }
 
-            // Before the first compaction IDs and slots line up, which covers the
-            // overwhelmingly common hot-path SetValue immediately after Produce.
             var direct = valueId - 1;
             if (direct >= 0 && direct < _stepCount && _steps[direct].Id == valueId)
             {
                 return direct;
             }
 
-            // Compaction preserves ascending Step IDs, so no permanent hash index is
-            // required just to keep stable identities after reclamation.
             var low = 0;
             var high = _stepCount - 1;
             while (low <= high)
@@ -315,6 +376,12 @@ namespace Lineage
 
         private bool TryAddRelation(int childStepId, int parentStepId)
         {
+            MaybeSpill(false);
+            if (_relationCount >= _relations.Length)
+            {
+                MaybeSpill(true);
+            }
+
             if (_relationCount >= _relations.Length)
             {
                 MarkDropped();
@@ -325,10 +392,221 @@ namespace Lineage
             return true;
         }
 
+        private void MaybeSpill(bool emergency)
+        {
+            if (!LineageSettings.ColdStorageEnabled || LineageSettings.ColdStorageMaxBytes <= 0 || _stepCount == 0)
+            {
+                return;
+            }
+
+            // Paging a hot store that is no larger than one configured page buys no useful
+            // headroom and breaks the semantics of deliberately tiny buffers used by the
+            // in-memory collector. Such scopes remain RAM-only and retain the old behavior.
+            var configuredPageSteps = Math.Max(1, LineageSettings.ColdStoragePageSteps);
+            if (_steps.Length <= configuredPageSteps)
+            {
+                return;
+            }
+
+            var highPercent = Clamp(LineageSettings.ColdStorageHighWatermarkPercent, 1, 99);
+            var targetPercent = Clamp(LineageSettings.ColdStorageTargetPercent, 0, highPercent - 1);
+            var highSteps = Math.Max(1, (_steps.Length * highPercent) / 100);
+            var highRelations = Math.Max(1, (_relations.Length * highPercent) / 100);
+
+            if (!emergency && _stepCount < highSteps && _relationCount < highRelations)
+            {
+                return;
+            }
+
+            var maxSpillable = _stepCount - 1;
+            if (maxSpillable <= 0)
+            {
+                return;
+            }
+
+            EnsureJournal();
+            var pageSteps = Math.Min(configuredPageSteps, maxSpillable);
+
+            if (emergency)
+            {
+                var emergencyCount = Math.Min(pageSteps, Math.Max(1, _stepCount / 4));
+                emergencyCount = Math.Min(emergencyCount, maxSpillable);
+                if (_journal.CanAccept)
+                {
+                    var page = ExtractOldestPage(emergencyCount);
+                    if (!_journal.TryEnqueue(page))
+                    {
+                        _journal.MarkTruncated();
+                        MarkDropped();
+                    }
+                }
+                else
+                {
+                    DiscardOldest(emergencyCount);
+                    _journal.MarkTruncated();
+                    MarkDropped();
+                }
+
+                return;
+            }
+
+            var targetSteps = (_steps.Length * targetPercent) / 100;
+            var targetRelations = (_relations.Length * targetPercent) / 100;
+            while ((_stepCount > targetSteps || _relationCount > targetRelations) && _stepCount > 1)
+            {
+                if (!_journal.CanAccept)
+                {
+                    // Disk is behind, but RAM still has headroom. The recorder never waits;
+                    // it will retry on later pressure checks and only truncates at emergency.
+                    break;
+                }
+
+                var stepExcess = Math.Max(0, _stepCount - targetSteps);
+                var relationExcess = Math.Max(0, _relationCount - targetRelations);
+                var relationDrivenSteps = relationExcess > 0 ? Math.Max(1, (relationExcess + 1) / 2) : 0;
+                var desired = Math.Max(stepExcess, relationDrivenSteps);
+                if (desired <= 0)
+                {
+                    break;
+                }
+
+                maxSpillable = _stepCount - 1;
+                var count = Math.Min(pageSteps, Math.Min(maxSpillable, desired));
+                if (count <= 0)
+                {
+                    break;
+                }
+
+                var page = ExtractOldestPage(count);
+                if (!_journal.TryEnqueue(page))
+                {
+                    // The page already left RAM. Make the missing history explicit rather
+                    // than retrying synchronously on the application thread.
+                    _journal.MarkTruncated();
+                    MarkDropped();
+                    break;
+                }
+            }
+        }
+
+        private void EnsureJournal()
+        {
+            if (_journal == null)
+            {
+                _journal = new ColdJournal(
+                    LineageSettings.ColdStorageMaxBytes,
+                    LineageSettings.ColdStorageQueuePages,
+                    LineageSettings.ColdStorageDirectory);
+            }
+        }
+
+        private ColdJournalPage ExtractOldestPage(int count)
+        {
+            count = Math.Max(1, Math.Min(count, _stepCount));
+            var firstStepId = _steps[0].Id;
+            var lastStepId = _steps[count - 1].Id;
+            var steps = new LineageStep[count];
+            Array.Copy(_steps, 0, steps, 0, count);
+
+            var relationCount = 0;
+            for (var i = 0; i < _relationCount; i++)
+            {
+                var child = _relations[i].ChildStepId;
+                if (child >= firstStepId && child <= lastStepId)
+                {
+                    relationCount++;
+                }
+            }
+
+            var relations = new LineageRelation[relationCount];
+            var relationCopy = 0;
+            var relationWrite = 0;
+            for (var i = 0; i < _relationCount; i++)
+            {
+                var relation = _relations[i];
+                if (relation.ChildStepId >= firstStepId && relation.ChildStepId <= lastStepId)
+                {
+                    relations[relationCopy++] = relation;
+                    continue;
+                }
+
+                if (relationWrite != i)
+                {
+                    _relations[relationWrite] = relation;
+                }
+
+                relationWrite++;
+            }
+
+            Array.Clear(_relations, relationWrite, _relationCount - relationWrite);
+            _relationCount = relationWrite;
+
+            var remaining = _stepCount - count;
+            if (remaining > 0)
+            {
+                Array.Copy(_steps, count, _steps, 0, remaining);
+            }
+
+            Array.Clear(_steps, remaining, count);
+            _stepCount = remaining;
+            return new ColdJournalPage(steps, relations, firstStepId, lastStepId);
+        }
+
+        private void DiscardOldest(int count)
+        {
+            if (_stepCount == 0 || count <= 0)
+            {
+                return;
+            }
+
+            count = Math.Min(count, Math.Max(1, _stepCount - 1));
+            var firstStepId = _steps[0].Id;
+            var lastStepId = _steps[count - 1].Id;
+
+            var relationWrite = 0;
+            for (var i = 0; i < _relationCount; i++)
+            {
+                var relation = _relations[i];
+                if (relation.ChildStepId >= firstStepId && relation.ChildStepId <= lastStepId)
+                {
+                    continue;
+                }
+
+                if (relationWrite != i)
+                {
+                    _relations[relationWrite] = relation;
+                }
+
+                relationWrite++;
+            }
+
+            Array.Clear(_relations, relationWrite, _relationCount - relationWrite);
+            _relationCount = relationWrite;
+
+            var remaining = _stepCount - count;
+            if (remaining > 0)
+            {
+                Array.Copy(_steps, count, _steps, 0, remaining);
+            }
+
+            Array.Clear(_steps, remaining, count);
+            _stepCount = remaining;
+        }
+
         private void MarkDropped()
         {
             _dropped = true;
             LineageMetrics.MarkDropped();
+        }
+
+        private static int Clamp(int value, int minimum, int maximum)
+        {
+            if (value < minimum)
+            {
+                return minimum;
+            }
+
+            return value > maximum ? maximum : value;
         }
     }
 

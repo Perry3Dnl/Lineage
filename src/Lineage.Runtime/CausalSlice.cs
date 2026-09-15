@@ -7,20 +7,24 @@ namespace Lineage
         public static List<LineageEvent> Collect(EventBuffer buffer, int focusValueId)
         {
             var result = new List<LineageEvent>();
-            if (buffer == null || focusValueId <= 0 || buffer.Count == 0)
+            if (buffer == null || focusValueId <= 0)
             {
                 return result;
             }
 
-            var steps = buffer.Steps;
-            var stepCount = buffer.Count;
-            var relations = buffer.Relations;
-            var relationCount = buffer.RelationCount;
+            var snapshot = buffer.CreateSnapshot();
+            var steps = snapshot.Steps;
+            var relations = snapshot.Relations;
+            if (steps.Length == 0)
+            {
+                return result;
+            }
 
-            // Step IDs remain stable after provenance GC, so they are deliberately not
-            // used as array indexes here. Report hydration can afford temporary maps.
+            // Report hydration is intentionally the expensive side of Lineage. At this
+            // point it is acceptable to build temporary indexes over both cold and hot
+            // provenance; the recording path never pays for these structures.
             var existing = new HashSet<int>();
-            for (var i = 0; i < stepCount; i++)
+            for (var i = 0; i < steps.Length; i++)
             {
                 if (steps[i].Id > 0)
                 {
@@ -34,10 +38,10 @@ namespace Lineage
             }
 
             var parentsByChild = new Dictionary<int, List<int>>();
-            for (var i = 0; i < relationCount; i++)
+            for (var i = 0; i < relations.Length; i++)
             {
                 var relation = relations[i];
-                if (!existing.Contains(relation.ChildStepId) || !existing.Contains(relation.ParentStepId))
+                if (!existing.Contains(relation.ChildStepId))
                 {
                     continue;
                 }
@@ -72,11 +76,16 @@ namespace Lineage
 
                 for (var i = 0; i < parents.Count; i++)
                 {
-                    stack.Push(parents[i]);
+                    if (existing.Contains(parents[i]))
+                    {
+                        stack.Push(parents[i]);
+                    }
                 }
             }
 
-            for (var i = 0; i < stepCount; i++)
+            // Cold segments and the hot array are both chronological, so the combined
+            // snapshot is already in StepId order. That keeps report output deterministic.
+            for (var i = 0; i < steps.Length; i++)
             {
                 var step = steps[i];
                 if (!visited.Contains(step.Id))
@@ -92,6 +101,11 @@ namespace Lineage
                     for (var p = 0; p < parents.Count; p++)
                     {
                         var parentId = parents[p];
+                        if (!existing.Contains(parentId))
+                        {
+                            continue;
+                        }
+
                         if (parent0 == 0)
                         {
                             parent0 = parentId;
@@ -109,7 +123,9 @@ namespace Lineage
                     ValueId = step.Id,
                     Parent0 = parent0,
                     Parent1 = parent1,
-                    Kind = step.Kind
+                    Kind = step.Kind,
+                    Value = step.Value,
+                    TypeName = step.TypeName
                 });
             }
 
